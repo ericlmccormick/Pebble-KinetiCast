@@ -24,6 +24,7 @@
 #define PERSIST_KEY_ICON 13
 #define PERSIST_KEY_UV 14
 #define PERSIST_KEY_IS_NIGHT 15
+#define PERSIST_KEY_IS_24H 16
 
 // --- UI Elements ---
 // Pointers to the various layers that make up the visual interface.
@@ -89,6 +90,7 @@ static void save_weather_data() {
   persist_write_string(PERSIST_KEY_ICON, s_icon_code);
   persist_write_int(PERSIST_KEY_UV, s_uv);
   persist_write_bool(PERSIST_KEY_IS_NIGHT, s_is_night);
+  persist_write_bool(PERSIST_KEY_IS_24H, s_is_24h);
 }
 
 // Reads saved weather variables from local storage when the watchface first launches.
@@ -101,6 +103,7 @@ static void load_weather_data() {
     if (persist_exists(PERSIST_KEY_UV)) s_uv = persist_read_int(PERSIST_KEY_UV);
     if (persist_exists(PERSIST_KEY_IS_NIGHT)) s_is_night = persist_read_bool(PERSIST_KEY_IS_NIGHT);
   }
+  if (persist_exists(PERSIST_KEY_IS_24H)) s_is_24h = persist_read_bool(PERSIST_KEY_IS_24H);
 }
 
 // Handler triggered when the user flicks their wrist. Forces a weather update.
@@ -472,11 +475,14 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     else if(t->key == MESSAGE_KEY_UNITS) s_use_metric = (get_int(t) == 1);
     else if(t->key == MESSAGE_KEY_UV_INDEX) s_uv = get_int(t);
     else if(t->key == MESSAGE_KEY_IS_NIGHT) s_is_night = (get_int(t) == 1);
+    else if(t->key == MESSAGE_KEY_TIME_FORMAT) s_is_24h = (get_int(t) == 1);
     t = dict_read_next(iter); // Move to next item in dictionary
   }
   s_weather_timestamp = time(NULL); // Note the update time
   save_weather_data(); // Persist the new data to local storage
   layer_mark_dirty(s_weather_arc_layer); // Force the watch to redraw the weather arc with new data
+  time_t now = time(NULL);
+  update_time(localtime(&now), MINUTE_UNIT); // Re-render clock in case the time format changed
 }
 
 // Primary initialization sequence for the watchface
