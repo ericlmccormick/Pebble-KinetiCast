@@ -173,6 +173,15 @@ var weatherFailures = 0;
 var lastWeatherSuccess = 0;
 var lastWeatherAttempt = 0;
 var weatherAutoFallback = null;
+var weatherGeneration = 0;
+var weatherRequests = [];
+
+function cancelWeatherRequests() {
+  var old = weatherRequests;
+  weatherRequests = [];
+  old.forEach(function(xhr) { try { xhr.abort(); } catch (ignore) {} });
+}
+function activeWeatherGeneration(gen) { return weatherInFlight && gen === weatherGeneration; }
 
 
 function desiredTempUnit(settings) {
@@ -205,11 +214,15 @@ function weatherIntervalMs(settings) {
 function weatherFinished(ok, detail) {
   if (!weatherInFlight) return;
   if (weatherWatchdog) { clearTimeout(weatherWatchdog); weatherWatchdog = null; }
+  cancelWeatherRequests();
+  // Invalidate all callbacks from the provider that just finished.
+  weatherGeneration++;
   if (!ok && weatherAutoFallback && weatherAutoFallback.index + 1 < weatherAutoFallback.providers.length) {
     weatherAutoFallback.index++;
     var next = weatherAutoFallback.providers[weatherAutoFallback.index];
     console.log('KinetiCast: ' + detail + '; falling back to ' + next);
-    weatherWatchdog = setTimeout(function() { weatherFinished(false, 'fallback timeout'); }, 35000);
+    var fallbackGeneration = weatherGeneration;
+    weatherWatchdog = setTimeout(function() { if(activeWeatherGeneration(fallbackGeneration)) weatherFinished(false, 'fallback timeout'); }, 35000);
     fetchNamedProvider(next, weatherAutoFallback.lat, weatherAutoFallback.lon, 'metric', weatherAutoFallback.settings);
     return;
   }
@@ -233,12 +246,23 @@ function weatherFinished(ok, detail) {
 function sendWeatherData(dict) {
   // Provider engines deliver Celsius. Convert exactly once, independently of distance.
   var settings = readSettings();
+  var gen = weatherGeneration;
   var unit = desiredTempUnit(settings);
   var distance = desiredDistanceUnit(settings);
-  ['TEMP_CURRENT','TEMP_HIGH','TEMP_LOW','DAY1_HIGH','DAY1_LOW',
-   'DAY2_HIGH','DAY2_LOW','DAY3_HIGH','DAY3_LOW'].forEach(function(key) {
-     if (dict[key] !== undefined && dict[key] !== null) dict[key] = convertCelsius(dict[key], unit);
-   });
+  var temperatureKeys = ['TEMP_CURRENT','TEMP_HIGH','TEMP_LOW','DAY1_HIGH','DAY1_LOW',
+    'DAY2_HIGH','DAY2_LOW','DAY3_HIGH','DAY3_LOW'];
+  // Reject missing, null, string and nonfinite readings BEFORE converting;
+  // Number(null) and Number(undefined) must not become fictitious temperatures.
+  for (var i = 0; i < temperatureKeys.length; i++) {
+    var value = dict[temperatureKeys[i]];
+    if (typeof value !== 'number' || !isFinite(value) || value < -120 || value > 75) {
+      weatherFinished(false, 'incomplete or invalid Celsius forecast'); return;
+    }
+  }
+  for (var j = 0; j < temperatureKeys.length; j++) {
+    var key = temperatureKeys[j];
+    dict[key] = convertCelsius(dict[key], unit);
+  }
   dict.UNITS = distance === 'km' ? 1 : 0;
   dict.DISTANCE_UNIT = dict.UNITS;
   dict.TEMP_UNIT = temperatureUnitId(unit);
@@ -249,14 +273,15 @@ function sendWeatherData(dict) {
     weatherFinished(false, 'invalid provider temperature'); return;
   }
   Pebble.sendAppMessage(dict, function() {
-    weatherFinished(true);
+    if (activeWeatherGeneration(gen)) weatherFinished(true);
   }, function() {
-    weatherFinished(false, 'AppMessage delivery failed');
+    if (activeWeatherGeneration(gen)) weatherFinished(false, 'AppMessage delivery failed');
   });
 }
 function guardWeatherLoad(xhr) {
   var handler = xhr.onload;
   xhr.onload = function() {
+    if (!activeWeatherGeneration(xhr._weatherGeneration)) return;
     if (xhr.status < 200 || xhr.status >= 300) {
       weatherFinished(false, 'HTTP ' + xhr.status); return;
     }
@@ -267,9 +292,11 @@ function guardWeatherLoad(xhr) {
 
 function weatherXHR() {
   var xhr = new XMLHttpRequest();
+  xhr._weatherGeneration = weatherGeneration;
+  weatherRequests.push(xhr);
   xhr.timeout = 15000;
-  xhr.onerror = function() { weatherFinished(false, 'network error'); };
-  xhr.ontimeout = function() { weatherFinished(false, 'network timeout'); };
+  xhr.onerror = function() { if (activeWeatherGeneration(xhr._weatherGeneration)) weatherFinished(false, 'network error'); };
+  xhr.ontimeout = function() { if (activeWeatherGeneration(xhr._weatherGeneration)) weatherFinished(false, 'network timeout'); };
   return xhr;
 }
 
@@ -328,7 +355,7 @@ function fetchMetNo(lat, lon, units, settings) {
     if (this.status === 200) {
       var json = JSON.parse(this.responseText);
       var timeseries = json.properties.timeseries;
-      if (!timeseries || timeseries.length === 0) return;
+      if (!timeseries || timeseries.length === 0) { weatherFinished(false, 'Met.no returned no forecast'); return; }
       
       var current = timeseries[0];
       var currentTempC = current.data.instant.details.air_temperature;
@@ -416,7 +443,7 @@ function fetchNWS(lat, lon, units, settings) {
         if (this.status === 200) {
           var json2 = JSON.parse(this.responseText);
           var periods = json2.properties.periods;
-          if (!periods || periods.length === 0) return;
+          if (!periods || periods.length === 0) { weatherFinished(false, 'NWS returned no forecast'); return; }
           
           function convertTemp(t, unit) {
             if (isMetric) { return unit === 'F' ? (t - 32) * 5 / 9 : t; } 
@@ -566,12 +593,14 @@ function getWeather() {
   if (now - lastWeatherAttempt < 5000) return;
   lastWeatherAttempt = now;
   weatherInFlight = true;
-  weatherWatchdog = setTimeout(function() { weatherFinished(false, 'request watchdog timeout'); }, 35000);
+  weatherGeneration++;
+  var requestGeneration = weatherGeneration;
+  weatherWatchdog = setTimeout(function() { if (activeWeatherGeneration(requestGeneration)) weatherFinished(false, 'request watchdog timeout'); }, 35000);
 
   if (settingEnabled(settings.USE_GPS, true)) {
     navigator.geolocation.getCurrentPosition(
-      function(pos) { executeProviderFetch(pos.coords.latitude, pos.coords.longitude, units, settings); }, 
-      function(err) { weatherFinished(false, 'GPS unavailable: ' + (err && err.message || 'unknown')); }, 
+      function(pos) { if (activeWeatherGeneration(requestGeneration)) executeProviderFetch(pos.coords.latitude, pos.coords.longitude, units, settings); }, 
+      function(err) { if (activeWeatherGeneration(requestGeneration)) weatherFinished(false, 'GPS unavailable: ' + (err && err.message || 'unknown')); }, 
       {timeout: 15000, maximumAge: 60000}
     );
   } else if (settings.MANUAL_LOCATION) {
@@ -597,7 +626,7 @@ function getWeather() {
           var json = JSON.parse(this.responseText);
           if (json.results && json.results.length > 0) {
             executeProviderFetch(json.results[0].latitude, json.results[0].longitude, units, settings);
-          }
+          } else weatherFinished(false, 'manual location not found');
         }
       };
       xhrOM.open('GET', geoUrl);
