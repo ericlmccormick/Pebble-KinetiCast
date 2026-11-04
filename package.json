@@ -41,7 +41,9 @@
             "UV_INDEX": 11,
             "WEATHER_PROVIDER": 26,
             "HR_GRAPH_WINDOW": 29,
-            "SLEEP_BRIEF_SECONDS": 30
+            "SLEEP_BRIEF_SECONDS": 30,
+            "TEMP_UNIT": 31,
+            "DISTANCE_UNIT": 32
         },
         "projectType": "native",
         "resources": {
