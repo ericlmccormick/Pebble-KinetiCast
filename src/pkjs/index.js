@@ -285,10 +285,10 @@ function fetchOpenMeteo(lat, lon, units, settings) {
     if (this.status === 200) { 
       var json = JSON.parse(this.responseText);
       var dict = {
-        'TEMP_CURRENT': Math.round(json.current.temperature_2m),
+        'TEMP_CURRENT': json.current.temperature_2m,
         'CONDITIONS': getWmoIcon(json.current.weather_code, json.current.is_day), 
-        'TEMP_HIGH': Math.round(json.daily.temperature_2m_max[0]),
-        'TEMP_LOW': Math.round(json.daily.temperature_2m_min[0]),
+        'TEMP_HIGH': json.daily.temperature_2m_max[0],
+        'TEMP_LOW': json.daily.temperature_2m_min[0],
         'UNITS': isMetric,
         'IS_NIGHT': json.current.is_day === 0 ? 1 : 0,
         'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ) || 30, 
@@ -296,14 +296,14 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
-        'DAY1_HIGH': Math.round(json.daily.temperature_2m_max[1]),
-        'DAY1_LOW': Math.round(json.daily.temperature_2m_min[1]),
+        'DAY1_HIGH': json.daily.temperature_2m_max[1],
+        'DAY1_LOW': json.daily.temperature_2m_min[1],
         'DAY1_ICON': getWmoIcon(json.daily.weather_code[1], 1),
-        'DAY2_HIGH': Math.round(json.daily.temperature_2m_max[2]),
-        'DAY2_LOW': Math.round(json.daily.temperature_2m_min[2]),
+        'DAY2_HIGH': json.daily.temperature_2m_max[2],
+        'DAY2_LOW': json.daily.temperature_2m_min[2],
         'DAY2_ICON': getWmoIcon(json.daily.weather_code[2], 1),
-        'DAY3_HIGH': Math.round(json.daily.temperature_2m_max[3]),
-        'DAY3_LOW': Math.round(json.daily.temperature_2m_min[3]),
+        'DAY3_HIGH': json.daily.temperature_2m_max[3],
+        'DAY3_LOW': json.daily.temperature_2m_min[3],
         'DAY3_ICON': getWmoIcon(json.daily.weather_code[3], 1)
       };
       sendWeatherData(dict);
@@ -361,7 +361,7 @@ function fetchMetNo(lat, lon, units, settings) {
       }
       
       function formatTemp(tempC) {
-        return isMetric ? Math.round(tempC) : Math.round((tempC * 9/5) + 32);
+        return isMetric ? tempC : ((tempC * 9/5) + 32);
       }
 
       var dict = {
@@ -419,7 +419,7 @@ function fetchNWS(lat, lon, units, settings) {
           if (!periods || periods.length === 0) return;
           
           function convertTemp(t, unit) {
-            if (isMetric) { return unit === 'F' ? Math.round((t - 32) * 5 / 9) : Math.round(t); } 
+            if (isMetric) { return unit === 'F' ? (t - 32) * 5 / 9 : t; } 
             else { return unit === 'C' ? Math.round((t * 9 / 5) + 32) : Math.round(t); }
           }
           
@@ -498,10 +498,10 @@ function fetchOpenWeather(lat, lon, units, settings) {
     if (this.status === 200) { 
       var json = JSON.parse(this.responseText);
       var dict = {
-        'TEMP_CURRENT': Math.round(json.current.temp),
+        'TEMP_CURRENT': json.current.temp,
         'CONDITIONS': json.current.weather[0].icon, 
-        'TEMP_HIGH': Math.round(json.daily[0].temp.max),
-        'TEMP_LOW': Math.round(json.daily[0].temp.min),
+        'TEMP_HIGH': json.daily[0].temp.max,
+        'TEMP_LOW': json.daily[0].temp.min,
         'UNITS': isMetric,
         'IS_NIGHT': json.current.weather[0].icon.includes('n') ? 1 : 0,
         'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ) || 30, 
@@ -509,14 +509,14 @@ function fetchOpenWeather(lat, lon, units, settings) {
         'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
-        'DAY1_HIGH': Math.round(json.daily[1].temp.max),
-        'DAY1_LOW': Math.round(json.daily[1].temp.min),
+        'DAY1_HIGH': json.daily[1].temp.max,
+        'DAY1_LOW': json.daily[1].temp.min,
         'DAY1_ICON': json.daily[1].weather[0].icon,
-        'DAY2_HIGH': Math.round(json.daily[2].temp.max),
-        'DAY2_LOW': Math.round(json.daily[2].temp.min),
+        'DAY2_HIGH': json.daily[2].temp.max,
+        'DAY2_LOW': json.daily[2].temp.min,
         'DAY2_ICON': json.daily[2].weather[0].icon,
-        'DAY3_HIGH': Math.round(json.daily[3].temp.max),
-        'DAY3_LOW': Math.round(json.daily[3].temp.min),
+        'DAY3_HIGH': json.daily[3].temp.max,
+        'DAY3_LOW': json.daily[3].temp.min,
         'DAY3_ICON': json.daily[3].weather[0].icon
       };
       sendWeatherData(dict);
