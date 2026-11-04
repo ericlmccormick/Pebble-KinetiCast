@@ -58,7 +58,9 @@ static char s_d1_ic[4] = "01d", s_d2_ic[4] = "01d", s_d3_ic[4] = "01d";
 static int s_last_sleep_sec = 0; 
 static char s_time_buf[10], s_cur_buf[8], s_hi_buf[8], s_lo_buf[8], s_hr_buf[8], s_dist_buf[16], s_sleep_buf[32] = ""; 
 static char s_icon_code[4] = "01d"; 
-static time_t s_last_weather_request = 0; 
+static time_t s_last_weather_request = 0;
+static time_t s_last_weather_success = 0;
+static bool s_has_weather = false; 
 static int s_hr_history[HR_HISTORY_SIZE]; 
 
 // ==============================================================================
@@ -99,13 +101,14 @@ static bool is_dark_theme() {
 
 static void request_weather() {
   time_t now = time(NULL);
-  if (now - s_last_weather_request < 600) { return; }
+  if (!s_connected || (s_last_weather_request && now - s_last_weather_request < 60)) return;
+  int interval = s_update_freq < 10 ? 10 : (s_update_freq > 120 ? 120 : s_update_freq);
+  if (s_has_weather && now - s_last_weather_success < interval * 60) return;
   
   DictionaryIterator *iter; 
   if (app_message_outbox_begin(&iter) == APP_MSG_OK) { 
     dict_write_uint8(iter, MESSAGE_KEY_REQUEST_WEATHER, 1); 
-    app_message_outbox_send(); 
-    s_last_weather_request = now; 
+    if (app_message_outbox_send() == APP_MSG_OK) s_last_weather_request = now; 
   }
 }
 
@@ -120,7 +123,8 @@ static void save_weather_data() {
   persist_write_int(PERSIST_KEY_LO, s_lo); 
   persist_write_string(PERSIST_KEY_ICON, s_icon_code); 
   persist_write_int(PERSIST_KEY_UV, s_uv); 
-  persist_write_bool(PERSIST_KEY_IS_NIGHT, s_is_night); 
+  persist_write_bool(PERSIST_KEY_IS_NIGHT, s_is_night);
+  if (s_has_weather) persist_write_int(29, (int)s_last_weather_success); 
   persist_write_bool(PERSIST_KEY_SHOW_SLEEP, s_show_sleep); 
   persist_write_int(PERSIST_KEY_THEME_MODE, s_theme_mode); 
   persist_write_int(PERSIST_KEY_DEFAULT_VIEW, s_default_view); 
@@ -138,6 +142,8 @@ static void save_weather_data() {
 
 static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_CUR)) { 
+    s_has_weather = true;
+    s_last_weather_success = persist_exists(29) ? persist_read_int(29) : 0;
     s_cur = persist_read_int(PERSIST_KEY_CUR); 
     s_hi = persist_read_int(PERSIST_KEY_HI); 
     s_lo = persist_read_int(PERSIST_KEY_LO); 
@@ -179,7 +185,7 @@ static void tap_handler(AccelAxisType axis, int32_t direction) {
   update_health(); 
   
   #if defined(PBL_HEALTH)
-  s_hr_history[HR_HISTORY_SIZE - 1] = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+  // Do not invent a new historical sample during a tap.
   layer_mark_dirty(s_hr_graph_layer); 
   #endif
 }
@@ -230,10 +236,11 @@ static void execute_panel_transition(bool alternate_view) {
 }
 
 static void bluetooth_callback(bool connected) {
-  s_connected = connected; 
+  bool was_connected = s_connected;
+  s_connected = connected;
+  if (connected && !was_connected) { s_last_weather_request = 0; request_weather(); }
   if (!connected && !quiet_time_is_active()) vibes_double_pulse(); 
-  layer_mark_dirty(s_weather_arc_layer); 
-  set_weather_icon(s_icon_code); 
+  layer_mark_dirty(s_weather_arc_layer); // Keep the last valid icon, even when offline. 
 }
 
 // ==============================================================================
@@ -312,9 +319,10 @@ static void hr_graph_update_proc(Layer *layer, GContext *ctx) {
   #if defined(PBL_HEALTH) 
   GRect bounds = layer_get_bounds(layer); 
   graphics_context_set_stroke_width(ctx, 2); 
-  int step_x = bounds.size.w / HR_HISTORY_SIZE; 
+  int step_x = (bounds.size.w - 1) / (HR_HISTORY_SIZE - 1); 
   
   for(int i = 0; i < HR_HISTORY_SIZE - 1; i++) {
+    if (s_hr_history[i] <= 0 || s_hr_history[i+1] <= 0) continue;
     int y1 = bounds.size.h - ((s_hr_history[i] - 55) / 2); 
     int y2 = bounds.size.h - ((s_hr_history[i+1] - 55) / 2);
     
@@ -422,8 +430,8 @@ static void generate_forecast_bitmaps() {
 
 static void set_weather_icon(char *icon_code) {
   if (s_weather_bitmap) { gbitmap_destroy(s_weather_bitmap); s_weather_bitmap = NULL; }
-  strncpy(s_icon_code, icon_code, sizeof(s_icon_code)); 
-  uint32_t res_id = !s_connected ? RESOURCE_ID_ICON_HAZE : get_resource_by_code(icon_code);
+  snprintf(s_icon_code, sizeof(s_icon_code), "%s", icon_code); 
+  uint32_t res_id = get_resource_by_code(s_icon_code); // Preserve weather icon when disconnected.
   s_weather_bitmap = gbitmap_create_with_resource(res_id); 
   bitmap_layer_set_bitmap(s_weather_icon_layer, s_weather_bitmap); 
 }
@@ -461,7 +469,7 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   text_layer_set_text(s_f_day3_layer, d3_txt); 
   text_layer_set_text(s_f_temp3_layer, t3_txt); 
 
-  if (tick_time->tm_min % 30 == 0) request_weather(); 
+  request_weather(); // Throttled according to UPDATE_FREQ and the last valid update. 
 
   #if defined(PBL_HEALTH)
   if (tick_time->tm_hour == 0 && tick_time->tm_min == 0) { 
@@ -475,14 +483,17 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
     animate_sleep_layer(false); 
   }
   for(int i = 0; i < HR_HISTORY_SIZE - 1; i++) s_hr_history[i] = s_hr_history[i+1]; 
-  s_hr_history[HR_HISTORY_SIZE - 1] = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+  int sampled_bpm = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+  s_hr_history[HR_HISTORY_SIZE - 1] = sampled_bpm > 0 ? sampled_bpm : 0;
   layer_mark_dirty(s_hr_graph_layer); 
   #endif
 }
 
 static void update_health() {
   #if defined(PBL_HEALTH)
-  snprintf(s_hr_buf, sizeof(s_hr_buf), "%d", (int)health_service_peek_current_value(HealthMetricHeartRateBPM)); 
+  int bpm = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+  if (bpm > 0) snprintf(s_hr_buf, sizeof(s_hr_buf), "%d", bpm);
+  else snprintf(s_hr_buf, sizeof(s_hr_buf), "--"); 
   text_layer_set_text(s_hr_layer, s_hr_buf); 
   
   int dist_m = (int)health_service_sum_today(HealthMetricWalkedDistanceMeters);
@@ -622,20 +633,20 @@ static void main_window_load(Window *window) {
   layer_add_child(s_forecast_container, text_layer_get_layer(s_f_temp3_layer)); 
 
   #if defined(PBL_HEALTH)
-  for(int i = 0; i < HR_HISTORY_SIZE; i++) s_hr_history[i] = 60; 
+  for(int i = 0; i < HR_HISTORY_SIZE; i++) s_hr_history[i] = 0; 
   time_t end_time = time(NULL);
   time_t start_time = end_time - (HR_HISTORY_SIZE * SECONDS_PER_MINUTE);
   HealthMinuteData minute_data[HR_HISTORY_SIZE]; 
   uint32_t num_records = health_service_get_minute_history(minute_data, HR_HISTORY_SIZE, &start_time, &end_time);
   if (num_records > 0) { 
     int offset = HR_HISTORY_SIZE - num_records; 
-    int last_valid_hr = 60; 
+    int last_valid_hr = 0; 
     for (uint32_t i = 0; i < num_records; i++) {
       int hr = minute_data[i].heart_rate_bpm;
-      if (hr > 0) last_valid_hr = hr; 
+      last_valid_hr = (!minute_data[i].is_invalid && hr > 0) ? hr : 0; 
       if ((offset + i) < HR_HISTORY_SIZE) s_hr_history[offset + i] = last_valid_hr; 
     }
-    int oldest_hr = minute_data[0].heart_rate_bpm > 0 ? minute_data[0].heart_rate_bpm : 60;
+    int oldest_hr = 0;
     for (int i = 0; i < offset; i++) s_hr_history[i] = oldest_hr; 
   }
   int current_hr = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
@@ -665,7 +676,19 @@ static void main_window_unload(Window *window) {
   if (s_heart_bitmap) gbitmap_destroy(s_heart_bitmap); 
   if (s_f_bmp1) gbitmap_destroy(s_f_bmp1); 
   if (s_f_bmp2) gbitmap_destroy(s_f_bmp2); 
-  if (s_f_bmp3) gbitmap_destroy(s_f_bmp3); 
+  if (s_f_bmp3) gbitmap_destroy(s_f_bmp3);
+  if (s_view_swap_timer) { app_timer_cancel(s_view_swap_timer); s_view_swap_timer = NULL; }
+  bitmap_layer_destroy(s_weather_icon_layer);
+  bitmap_layer_destroy(s_heart_layer);
+  text_layer_destroy(s_time_layer);
+  text_layer_destroy(s_date_layer);
+  text_layer_destroy(s_hr_layer);
+  text_layer_destroy(s_dist_layer);
+  layer_destroy(s_weather_arc_layer);
+  layer_destroy(s_goals_canvas);
+  layer_destroy(s_hr_graph_layer);
+  layer_destroy(s_battery_layer);
+  layer_destroy(s_sleep_layer);
   
   text_layer_destroy(s_f_day1_layer); 
   text_layer_destroy(s_f_day2_layer); 
@@ -689,7 +712,7 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
   bool layout_changed = false;
 
   while(t) { 
-    if(t->key == MESSAGE_KEY_TEMP_CURRENT) s_cur = get_int(t);
+    if(t->key == MESSAGE_KEY_TEMP_CURRENT) { s_cur = get_int(t); s_has_weather = true; s_last_weather_success = time(NULL); }
     else if(t->key == MESSAGE_KEY_TEMP_HIGH) s_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_TEMP_LOW) s_lo = get_int(t);
     else if(t->key == MESSAGE_KEY_CONDITIONS) set_weather_icon(t->value->cstring);
@@ -708,13 +731,13 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     }
     else if(t->key == MESSAGE_KEY_DAY1_HIGH) s_d1_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY1_LOW) s_d1_lo = get_int(t);
-    else if(t->key == MESSAGE_KEY_DAY1_ICON) strncpy(s_d1_ic, t->value->cstring, sizeof(s_d1_ic));
+    else if(t->key == MESSAGE_KEY_DAY1_ICON) snprintf(s_d1_ic, sizeof(s_d1_ic), "%s", t->value->cstring);
     else if(t->key == MESSAGE_KEY_DAY2_HIGH) s_d2_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY2_LOW) s_d2_lo = get_int(t);
-    else if(t->key == MESSAGE_KEY_DAY2_ICON) strncpy(s_d2_ic, t->value->cstring, sizeof(s_d2_ic));
+    else if(t->key == MESSAGE_KEY_DAY2_ICON) snprintf(s_d2_ic, sizeof(s_d2_ic), "%s", t->value->cstring);
     else if(t->key == MESSAGE_KEY_DAY3_HIGH) s_d3_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY3_LOW) s_d3_lo = get_int(t);
-    else if(t->key == MESSAGE_KEY_DAY3_ICON) strncpy(s_d3_ic, t->value->cstring, sizeof(s_d3_ic));
+    else if(t->key == MESSAGE_KEY_DAY3_ICON) snprintf(s_d3_ic, sizeof(s_d3_ic), "%s", t->value->cstring);
 
     t = dict_read_next(iter); 
   }
@@ -750,5 +773,14 @@ static void init() {
 
 int main(void) { 
   init(); 
-  app_event_loop(); 
+  app_event_loop();
+  tick_timer_service_unsubscribe();
+  battery_state_service_unsubscribe();
+  accel_tap_service_unsubscribe();
+  connection_service_unsubscribe();
+  #if defined(PBL_HEALTH)
+  health_service_events_unsubscribe();
+  #endif
+  app_message_deregister_callbacks();
+  window_destroy(s_main_window);
 }
