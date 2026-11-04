@@ -24,6 +24,7 @@
 #define PERSIST_KEY_D3_HI 26
 #define PERSIST_KEY_D3_LO 27
 #define PERSIST_KEY_D3_IC 28
+#define PERSIST_KEY_WEATHER_TIME 29
 
 #define HR_HISTORY_SIZE 20 
 
@@ -124,7 +125,7 @@ static void save_weather_data() {
   persist_write_string(PERSIST_KEY_ICON, s_icon_code); 
   persist_write_int(PERSIST_KEY_UV, s_uv); 
   persist_write_bool(PERSIST_KEY_IS_NIGHT, s_is_night);
-  if (s_has_weather) persist_write_int(29, (int)s_last_weather_success); 
+  if (s_has_weather) persist_write_int(PERSIST_KEY_WEATHER_TIME, (int)s_last_weather_success); 
   persist_write_bool(PERSIST_KEY_SHOW_SLEEP, s_show_sleep); 
   persist_write_int(PERSIST_KEY_THEME_MODE, s_theme_mode); 
   persist_write_int(PERSIST_KEY_DEFAULT_VIEW, s_default_view); 
@@ -143,7 +144,7 @@ static void save_weather_data() {
 static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_CUR)) { 
     s_has_weather = true;
-    s_last_weather_success = persist_exists(29) ? persist_read_int(29) : 0;
+    s_last_weather_success = persist_exists(PERSIST_KEY_WEATHER_TIME) ? persist_read_int(PERSIST_KEY_WEATHER_TIME) : 0;
     s_cur = persist_read_int(PERSIST_KEY_CUR); 
     s_hi = persist_read_int(PERSIST_KEY_HI); 
     s_lo = persist_read_int(PERSIST_KEY_LO); 
@@ -415,6 +416,9 @@ static uint32_t get_resource_by_code(char *code) {
 }
 
 static void generate_forecast_bitmaps() {
+  bitmap_layer_set_bitmap(s_f_icon1_layer, NULL);
+  bitmap_layer_set_bitmap(s_f_icon2_layer, NULL);
+  bitmap_layer_set_bitmap(s_f_icon3_layer, NULL);
   if (s_f_bmp1) gbitmap_destroy(s_f_bmp1);
   if (s_f_bmp2) gbitmap_destroy(s_f_bmp2);
   if (s_f_bmp3) gbitmap_destroy(s_f_bmp3);
@@ -429,8 +433,9 @@ static void generate_forecast_bitmaps() {
 }
 
 static void set_weather_icon(char *icon_code) {
+  bitmap_layer_set_bitmap(s_weather_icon_layer, NULL);
   if (s_weather_bitmap) { gbitmap_destroy(s_weather_bitmap); s_weather_bitmap = NULL; }
-  snprintf(s_icon_code, sizeof(s_icon_code), "%s", icon_code); 
+  if (icon_code != s_icon_code) snprintf(s_icon_code, sizeof(s_icon_code), "%s", icon_code); 
   uint32_t res_id = get_resource_by_code(s_icon_code); // Preserve weather icon when disconnected.
   s_weather_bitmap = gbitmap_create_with_resource(res_id); 
   bitmap_layer_set_bitmap(s_weather_icon_layer, s_weather_bitmap); 
