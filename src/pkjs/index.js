@@ -463,91 +463,93 @@ function fetchMetNo(lat, lon, units, settings) {
 // NATIONAL WEATHER SERVICE ENGINE (KEYLESS US ONLY)
 // ------------------------------------------------------------------------------
 function fetchNWS(lat, lon, units, settings) {
-  var isMetric = 1; // Celsius for shared conversion.
-  var pointUrl = 'https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4);
-  
-  var xhr1 = weatherXHR();
-  xhr1.open('GET', pointUrl);
-  xhr1.setRequestHeader('User-Agent', 'KinetiCast/2.2 (https://github.com/ericlmccormick/Pebble_Health_and_Weather)');
-  xhr1.onload = function() {
-    if (this.status === 200) {
-      var json1 = JSON.parse(this.responseText);
-      var forecastUrl = json1.properties.forecast;
-      
-      var xhr2 = weatherXHR();
-      xhr2.open('GET', forecastUrl);
-      xhr2.setRequestHeader('User-Agent', 'KinetiCast/2.2 (https://github.com/ericlmccormick/Pebble_Health_and_Weather)');
-      xhr2.onload = function() {
-        if (this.status === 200) {
-          var json2 = JSON.parse(this.responseText);
-          var periods = json2.properties.periods;
-          if (!periods || periods.length === 0) { weatherFinished(false, 'NWS returned no forecast'); return; }
-          
-          function convertTemp(t, unit) {
-            if (isMetric) { return unit === 'F' ? (t - 32) * 5 / 9 : t; } 
-            else { return unit === 'C' ? Math.round((t * 9 / 5) + 32) : Math.round(t); }
+  var base = 'https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4);
+  var agent = {'User-Agent': 'KinetiCast/2.2 (https://github.com/ericlmccormick/Pebble_Health_and_Weather)'};
+  function jsonRequest(url, callback) {
+    var xhr = weatherXHR();
+    xhr.open('GET', url);
+    try { xhr.setRequestHeader('User-Agent', agent['User-Agent']); } catch (ignore) {}
+    xhr.onload = function() {
+      var value = JSON.parse(this.responseText);
+      callback(value);
+    };
+    guardWeatherLoad(xhr);
+    xhr.send();
+  }
+  jsonRequest(base, function(point) {
+    var properties = point.properties || {};
+    var hourlyURL = properties.forecastHourly;
+    var stationsURL = properties.observationStations;
+    if (!hourlyURL || !stationsURL) {
+      weatherFinished(false, 'NWS hourly forecast or observations unavailable');
+      return;
+    }
+    jsonRequest(hourlyURL, function(forecast) {
+      var periods = forecast.properties && forecast.properties.periods;
+      if (!periods || !periods.length) {
+        weatherFinished(false, 'NWS hourly forecast empty');
+        return;
+      }
+      var forecastDays = {};
+      var tz = properties.timeZone || settings._LOCATION_TIMEZONE;
+      var localToday = locationDateParts(Date.now(), tz).day;
+      for (var i = 0; i < periods.length; i++) {
+        var p = periods[i];
+        if (!p || !p.startTime || typeof p.temperature !== 'number') continue;
+        var day = locationDateParts(p.startTime, tz);
+        var c = p.temperatureUnit === 'F' ? (p.temperature - 32) * 5 / 9 : p.temperature;
+        if (!isFinite(c)) continue;
+        if (!forecastDays[day.day]) forecastDays[day.day] = {max:-999,min:999,icon:null};
+        var d = forecastDays[day.day];
+        d.max = Math.max(d.max, c);
+        d.min = Math.min(d.min, c);
+        // Prefer an afternoon symbol for each day's forecast icon.
+        if (!d.icon || (day.hour >= 11 && day.hour <= 14)) {
+          d.icon = nwsForecastToOWM(p.shortForecast || '', p.isDaytime !== false);
+        }
+      }
+      var days;
+      try { days = completeDayArray(forecastDays, localToday); }
+      catch (error) { weatherFinished(false, error.message); return; }
+      var first = periods[0];
+      jsonRequest(stationsURL, function(stations) {
+        var station = stations.observationStations && stations.observationStations[0];
+        if (!station && stations.features && stations.features.length) {
+          station = stations.features[0].id ||
+            (stations.features[0].properties && stations.features[0].properties['@id']);
+        }
+        if (!station || station.indexOf('https://') !== 0) {
+          weatherFinished(false, 'NWS observation station missing');
+          return;
+        }
+        jsonRequest(station.replace(/\/$/, '') + '/observations/latest', function(observation) {
+          var observed = observation.properties && observation.properties.temperature &&
+            observation.properties.temperature.value;
+          if (typeof observed !== 'number' || !isFinite(observed)) {
+            weatherFinished(false, 'NWS latest observation has no temperature');
+            return;
           }
-          
-          var p0 = periods[0];
-          var currentTemp = convertTemp(p0.temperature, p0.temperatureUnit);
-          var conditions = nwsForecastToOWM(p0.shortForecast, p0.isDaytime);
-          var isNight = p0.isDaytime ? 0 : 1;
-          
-          var days = [];
-          var currentDay = {};
-          
-          for (var i = 0; i < periods.length; i++) {
-            var p = periods[i];
-            if (p.isDaytime) {
-              if (currentDay.high !== undefined) {
-                days.push(currentDay);
-                currentDay = {};
-              }
-              currentDay.high = p.temperature;
-              currentDay.unit = p.temperatureUnit;
-              currentDay.icon = nwsForecastToOWM(p.shortForecast, true);
-            } else {
-              currentDay.low = p.temperature;
-              currentDay.unit = p.temperatureUnit;
-              if (currentDay.high === undefined) {
-                currentDay.high = p.temperature;
-                currentDay.icon = nwsForecastToOWM(p.shortForecast, false);
-              }
-            }
-          }
-          days.push(currentDay);
-          
+          // Observation is Celsius, unlike NWS forecastHourly's often-Fahrenheit readings.
           var dict = {
-            'TEMP_CURRENT': currentTemp,
-            'CONDITIONS': conditions,
-            'TEMP_HIGH': convertTemp(days[0].high, days[0].unit),
-            'TEMP_LOW': convertTemp(days[0].low !== undefined ? days[0].low : days[0].high, days[0].unit),
-            'UNITS': isMetric,
-            'IS_NIGHT': isNight,
-            'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ) || 30,
+            'TEMP_CURRENT': observed,
+            'CONDITIONS': nwsForecastToOWM(first.shortForecast || '', first.isDaytime !== false),
+            'TEMP_HIGH': days[0].max, 'TEMP_LOW': days[0].min,
+            'UNITS': 1,
+            'IS_NIGHT': first.isDaytime === false ? 1 : 0,
+            'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ, 10) || 30,
             'UV_INDEX': 0,
             'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
-            'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
-            'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
-            'DAY1_HIGH': convertTemp(days[1].high, days[1].unit),
-            'DAY1_LOW': convertTemp(days[1].low, days[1].unit),
-            'DAY1_ICON': days[1].icon,
-            'DAY2_HIGH': convertTemp(days[2].high, days[2].unit),
-            'DAY2_LOW': convertTemp(days[2].low, days[2].unit),
-            'DAY2_ICON': days[2].icon,
-            'DAY3_HIGH': convertTemp(days[3].high, days[3].unit),
-            'DAY3_LOW': convertTemp(days[3].low, days[3].unit),
-            'DAY3_ICON': days[3].icon
+            'THEME_MODE': parseInt(settings.THEME_MODE, 10) || 0,
+            'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW, 10) || 0,
+            'DAY1_HIGH': days[1].max, 'DAY1_LOW': days[1].min, 'DAY1_ICON': days[1].icon,
+            'DAY2_HIGH': days[2].max, 'DAY2_LOW': days[2].min, 'DAY2_ICON': days[2].icon,
+            'DAY3_HIGH': days[3].max, 'DAY3_LOW': days[3].min, 'DAY3_ICON': days[3].icon
           };
           sendWeatherData(dict);
-        }
-      };
-      guardWeatherLoad(xhr2);
-  xhr2.send();
-    }
-  };
-  guardWeatherLoad(xhr1);
-  xhr1.send();
+        });
+      });
+    });
+  });
 }
 
 // ------------------------------------------------------------------------------
