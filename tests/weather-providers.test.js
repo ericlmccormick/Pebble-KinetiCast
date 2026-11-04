@@ -9,6 +9,7 @@ assert.ok(start >= 0 && end > start, 'Provider router not found');
 const requests = [];
 const context = {
   weatherAutoFallback: null,
+  armWeatherWatchdog: function() {},
   fetchOpenWeather: () => requests.push('openweathermap'),
   fetchOpenMeteo: () => requests.push('openmeteo'),
   fetchMetNo: () => requests.push('metno'),
