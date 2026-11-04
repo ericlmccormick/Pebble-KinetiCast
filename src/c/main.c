@@ -24,8 +24,11 @@
 #define PERSIST_KEY_D3_HI 26
 #define PERSIST_KEY_D3_LO 27
 #define PERSIST_KEY_D3_IC 28
+#define PERSIST_KEY_WEATHER_TIME 29
+#define PERSIST_KEY_HR_WINDOW 30
+#define PERSIST_KEY_SLEEP_DURATION 31
 
-#define HR_HISTORY_SIZE 20 
+#define HR_HISTORY_SIZE 60 
 
 // ==============================================================================
 // SECTION: STATE VARIABLES & UI POINTERS
@@ -43,10 +46,13 @@ static TextLayer *s_f_day1_layer, *s_f_day2_layer, *s_f_day3_layer;
 static TextLayer *s_f_temp1_layer, *s_f_temp2_layer, *s_f_temp3_layer; 
 static BitmapLayer *s_f_icon1_layer, *s_f_icon2_layer, *s_f_icon3_layer; 
 static GBitmap *s_f_bmp1 = NULL, *s_f_bmp2 = NULL, *s_f_bmp3 = NULL; 
-static AppTimer *s_view_swap_timer = NULL; 
+static AppTimer *s_view_swap_timer = NULL;
+static AppTimer *s_sleep_dismiss_timer = NULL;
+static int s_sleep_duration = 0; // 0: require tap; otherwise auto-dismiss seconds 
 
 static int s_cur = 0, s_hi = 0, s_lo = 0, s_uv = 0; 
-static int s_update_freq = 30, s_battery_level = 100; 
+static int s_update_freq = 30, s_battery_level = 100;
+static int s_hr_window = 20; 
 static int s_step_goal = 10000, s_active_goal = 30; 
 static bool s_connected = true, s_use_metric = false, s_is_night = false, s_show_sleep = true; 
 static int s_theme_mode = 0, s_default_view = 0; 
@@ -58,7 +64,9 @@ static char s_d1_ic[4] = "01d", s_d2_ic[4] = "01d", s_d3_ic[4] = "01d";
 static int s_last_sleep_sec = 0; 
 static char s_time_buf[10], s_cur_buf[8], s_hi_buf[8], s_lo_buf[8], s_hr_buf[8], s_dist_buf[16], s_sleep_buf[32] = ""; 
 static char s_icon_code[4] = "01d"; 
-static time_t s_last_weather_request = 0; 
+static time_t s_last_weather_request = 0;
+static time_t s_last_weather_success = 0;
+static bool s_has_weather = false; 
 static int s_hr_history[HR_HISTORY_SIZE]; 
 
 // ==============================================================================
@@ -99,13 +107,16 @@ static bool is_dark_theme() {
 
 static void request_weather() {
   time_t now = time(NULL);
-  if (now - s_last_weather_request < 600) { return; }
+  if (!s_connected || (s_last_weather_request && now - s_last_weather_request < 60)) return;
+  int interval = s_update_freq < 10 ? 10 : (s_update_freq > 120 ? 120 : s_update_freq);
+  // Reduce radio use automatically at critically low battery.
+  if (s_battery_level <= 15) interval *= 2;
+  if (s_has_weather && now - s_last_weather_success < interval * 60) return;
   
   DictionaryIterator *iter; 
   if (app_message_outbox_begin(&iter) == APP_MSG_OK) { 
     dict_write_uint8(iter, MESSAGE_KEY_REQUEST_WEATHER, 1); 
-    app_message_outbox_send(); 
-    s_last_weather_request = now; 
+    if (app_message_outbox_send() == APP_MSG_OK) s_last_weather_request = now; 
   }
 }
 
@@ -120,10 +131,13 @@ static void save_weather_data() {
   persist_write_int(PERSIST_KEY_LO, s_lo); 
   persist_write_string(PERSIST_KEY_ICON, s_icon_code); 
   persist_write_int(PERSIST_KEY_UV, s_uv); 
-  persist_write_bool(PERSIST_KEY_IS_NIGHT, s_is_night); 
+  persist_write_bool(PERSIST_KEY_IS_NIGHT, s_is_night);
+  if (s_has_weather) persist_write_int(PERSIST_KEY_WEATHER_TIME, (int)s_last_weather_success); 
   persist_write_bool(PERSIST_KEY_SHOW_SLEEP, s_show_sleep); 
   persist_write_int(PERSIST_KEY_THEME_MODE, s_theme_mode); 
-  persist_write_int(PERSIST_KEY_DEFAULT_VIEW, s_default_view); 
+  persist_write_int(PERSIST_KEY_DEFAULT_VIEW, s_default_view);
+  persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window);
+  persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration); 
   
   persist_write_int(PERSIST_KEY_D1_HI, s_d1_hi);
   persist_write_int(PERSIST_KEY_D1_LO, s_d1_lo);
@@ -138,6 +152,8 @@ static void save_weather_data() {
 
 static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_CUR)) { 
+    s_has_weather = true;
+    s_last_weather_success = persist_exists(PERSIST_KEY_WEATHER_TIME) ? persist_read_int(PERSIST_KEY_WEATHER_TIME) : 0;
     s_cur = persist_read_int(PERSIST_KEY_CUR); 
     s_hi = persist_read_int(PERSIST_KEY_HI); 
     s_lo = persist_read_int(PERSIST_KEY_LO); 
@@ -149,6 +165,14 @@ static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_SHOW_SLEEP)) s_show_sleep = persist_read_bool(PERSIST_KEY_SHOW_SLEEP);
   if (persist_exists(PERSIST_KEY_THEME_MODE)) s_theme_mode = persist_read_int(PERSIST_KEY_THEME_MODE);
   if (persist_exists(PERSIST_KEY_DEFAULT_VIEW)) s_default_view = persist_read_int(PERSIST_KEY_DEFAULT_VIEW);
+  if (persist_exists(PERSIST_KEY_SLEEP_DURATION)) {
+    int duration = persist_read_int(PERSIST_KEY_SLEEP_DURATION);
+    s_sleep_duration = (duration == 15 || duration == 30 || duration == 60) ? duration : 0;
+  }
+  if (persist_exists(PERSIST_KEY_HR_WINDOW)) {
+    int value = persist_read_int(PERSIST_KEY_HR_WINDOW);
+    s_hr_window = (value == 30 || value == 60) ? value : 20;
+  }
   
   if (persist_exists(PERSIST_KEY_D1_HI)) s_d1_hi = persist_read_int(PERSIST_KEY_D1_HI);
   if (persist_exists(PERSIST_KEY_D1_LO)) s_d1_lo = persist_read_int(PERSIST_KEY_D1_LO);
@@ -162,7 +186,8 @@ static void load_weather_data() {
 }
 
 static void tap_handler(AccelAxisType axis, int32_t direction) {
-  if (layer_get_frame(s_sleep_layer).origin.y < 228) { 
+  if (layer_get_frame(s_sleep_layer).origin.y < 228) {
+    if (s_sleep_dismiss_timer) { app_timer_cancel(s_sleep_dismiss_timer); s_sleep_dismiss_timer = NULL; } 
     animate_sleep_layer(false); 
     #if defined(PBL_HEALTH) 
     s_last_sleep_sec = (int)health_service_sum_today(HealthMetricSleepSeconds);
@@ -179,7 +204,7 @@ static void tap_handler(AccelAxisType axis, int32_t direction) {
   update_health(); 
   
   #if defined(PBL_HEALTH)
-  s_hr_history[HR_HISTORY_SIZE - 1] = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+  // Do not invent a new historical sample during a tap.
   layer_mark_dirty(s_hr_graph_layer); 
   #endif
 }
@@ -207,6 +232,15 @@ static void animate_sleep_layer(bool slide_up) {
 }
 
 // CHANGED: The containers now slide up to Y=126 and use a height of 96 to properly fit the layout
+static void sleep_dismiss_callback(void *context) {
+  s_sleep_dismiss_timer = NULL;
+  animate_sleep_layer(false);
+  #if defined(PBL_HEALTH)
+  s_last_sleep_sec = (int)health_service_sum_today(HealthMetricSleepSeconds);
+  persist_write_int(PERSIST_KEY_LAST_SLEEP_SEC, s_last_sleep_sec);
+  #endif
+}
+
 static void execute_panel_transition(bool alternate_view) {
   s_view_is_swapped = alternate_view; 
   bool display_forecast = (s_default_view == 0) ? s_view_is_swapped : !s_view_is_swapped;
@@ -230,10 +264,11 @@ static void execute_panel_transition(bool alternate_view) {
 }
 
 static void bluetooth_callback(bool connected) {
-  s_connected = connected; 
+  bool was_connected = s_connected;
+  s_connected = connected;
+  if (connected && !was_connected) { s_last_weather_request = 0; request_weather(); }
   if (!connected && !quiet_time_is_active()) vibes_double_pulse(); 
-  layer_mark_dirty(s_weather_arc_layer); 
-  set_weather_icon(s_icon_code); 
+  layer_mark_dirty(s_weather_arc_layer); // Keep the last valid icon, even when offline. 
 }
 
 // ==============================================================================
@@ -245,12 +280,15 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_antialiased(ctx, true); 
   graphics_context_set_text_color(ctx, is_dark_theme() ? GColorWhite : GColorBlack); 
   
-  snprintf(s_lo_buf, sizeof(s_lo_buf), "%d", s_lo); 
-  snprintf(s_hi_buf, sizeof(s_hi_buf), "%d", s_hi); 
+  if (s_has_weather) snprintf(s_lo_buf, sizeof(s_lo_buf), "%d", s_lo);
+  else snprintf(s_lo_buf, sizeof(s_lo_buf), "--"); 
+  if (s_has_weather) snprintf(s_hi_buf, sizeof(s_hi_buf), "%d", s_hi);
+  else snprintf(s_hi_buf, sizeof(s_hi_buf), "--"); 
   graphics_draw_text(ctx, s_lo_buf, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(15, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
   graphics_draw_text(ctx, s_hi_buf, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 50, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
   
-  snprintf(s_cur_buf, sizeof(s_cur_buf), "%d", s_cur); 
+  if (s_has_weather) snprintf(s_cur_buf, sizeof(s_cur_buf), "%d", s_cur);
+  else snprintf(s_cur_buf, sizeof(s_cur_buf), "--"); 
   graphics_draw_text(ctx, s_cur_buf, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD), GRect(0, 15, bounds.size.w, 35), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL); 
   
   GRect arc_bounds = grect_inset(bounds, GEdgeInsets(14, 14, 28, 14)); 
@@ -258,7 +296,7 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_stroke_color(ctx, is_dark_theme() ? GColorDarkGray : GColorLightGray); 
   graphics_draw_arc(ctx, arc_bounds, GOvalScaleModeFitCircle, DEG_TO_TRIGANGLE(260), DEG_TO_TRIGANGLE(460));
   
-  if (s_connected) { 
+  if (s_has_weather) {
     int range = s_hi - s_lo; 
     float percent = 0.5f; 
     if (range > 0) percent = (float)(s_cur - s_lo) / (float)range; 
@@ -283,7 +321,11 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
       else uv_color = GColorPurple; 
     }
     graphics_context_set_fill_color(ctx, uv_color); 
-    graphics_fill_circle(ctx, dot, 5); 
+    graphics_fill_circle(ctx, dot, 5);
+  }
+  time_t now = time(NULL);
+  if (!s_connected || !s_has_weather || (s_last_weather_success > 0 && now - s_last_weather_success > (s_update_freq * 120))) {
+    graphics_draw_text(ctx, "!", fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 16, 0, 16, 22), GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
   }
 }
 
@@ -312,9 +354,12 @@ static void hr_graph_update_proc(Layer *layer, GContext *ctx) {
   #if defined(PBL_HEALTH) 
   GRect bounds = layer_get_bounds(layer); 
   graphics_context_set_stroke_width(ctx, 2); 
-  int step_x = bounds.size.w / HR_HISTORY_SIZE; 
-  
-  for(int i = 0; i < HR_HISTORY_SIZE - 1; i++) {
+  int visible = s_hr_window;
+  if (visible != 20 && visible != 30 && visible != 60) visible = 20;
+  int first = HR_HISTORY_SIZE - visible;
+  // Multiplication before division retains width on small graph layers.
+  for (int i = first; i < HR_HISTORY_SIZE - 1; i++) {
+    if (s_hr_history[i] <= 0 || s_hr_history[i+1] <= 0) continue;
     int y1 = bounds.size.h - ((s_hr_history[i] - 55) / 2); 
     int y2 = bounds.size.h - ((s_hr_history[i+1] - 55) / 2);
     
@@ -330,7 +375,9 @@ static void hr_graph_update_proc(Layer *layer, GContext *ctx) {
     else if (avg_hr > 95) line_color = GColorChromeYellow; 
 
     graphics_context_set_stroke_color(ctx, line_color); 
-    graphics_draw_line(ctx, GPoint(i * step_x, y1), GPoint((i+1) * step_x, y2)); 
+    int x1 = ((i - first) * (bounds.size.w - 1)) / (visible - 1);
+    int x2 = ((i + 1 - first) * (bounds.size.w - 1)) / (visible - 1);
+    graphics_draw_line(ctx, GPoint(x1, y1), GPoint(x2, y2)); 
   }
   #endif
 }
@@ -347,7 +394,7 @@ static void sleep_layer_update_proc(Layer *layer, GContext *ctx) {
   int sleep_sec = (int)health_service_sum_today(HealthMetricSleepSeconds); 
   int restful_sec = (int)health_service_sum_today(HealthMetricSleepRestfulSeconds); 
   if (sleep_sec > 0) { 
-    snprintf(s_sleep_buf, sizeof(s_sleep_buf), "Sleep: %dh %dm\nDeep/Restful: %d%%", sleep_sec / 3600, (sleep_sec % 3600) / 60, (restful_sec * 100) / sleep_sec);
+    snprintf(s_sleep_buf, sizeof(s_sleep_buf), "Sleep: %dh %dm\nRestful: %d%%", sleep_sec / 3600, (sleep_sec % 3600) / 60, (restful_sec * 100) / sleep_sec);
   } else {
     snprintf(s_sleep_buf, sizeof(s_sleep_buf), "Calculating Sleep...");
   }
@@ -407,6 +454,9 @@ static uint32_t get_resource_by_code(char *code) {
 }
 
 static void generate_forecast_bitmaps() {
+  bitmap_layer_set_bitmap(s_f_icon1_layer, NULL);
+  bitmap_layer_set_bitmap(s_f_icon2_layer, NULL);
+  bitmap_layer_set_bitmap(s_f_icon3_layer, NULL);
   if (s_f_bmp1) gbitmap_destroy(s_f_bmp1);
   if (s_f_bmp2) gbitmap_destroy(s_f_bmp2);
   if (s_f_bmp3) gbitmap_destroy(s_f_bmp3);
@@ -421,9 +471,10 @@ static void generate_forecast_bitmaps() {
 }
 
 static void set_weather_icon(char *icon_code) {
+  bitmap_layer_set_bitmap(s_weather_icon_layer, NULL);
   if (s_weather_bitmap) { gbitmap_destroy(s_weather_bitmap); s_weather_bitmap = NULL; }
-  strncpy(s_icon_code, icon_code, sizeof(s_icon_code)); 
-  uint32_t res_id = !s_connected ? RESOURCE_ID_ICON_HAZE : get_resource_by_code(icon_code);
+  if (icon_code != s_icon_code) snprintf(s_icon_code, sizeof(s_icon_code), "%s", icon_code); 
+  uint32_t res_id = get_resource_by_code(s_icon_code); // Preserve weather icon when disconnected.
   s_weather_bitmap = gbitmap_create_with_resource(res_id); 
   bitmap_layer_set_bitmap(s_weather_icon_layer, s_weather_bitmap); 
 }
@@ -461,7 +512,8 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   text_layer_set_text(s_f_day3_layer, d3_txt); 
   text_layer_set_text(s_f_temp3_layer, t3_txt); 
 
-  if (tick_time->tm_min % 30 == 0) request_weather(); 
+  request_weather(); // Throttled according to UPDATE_FREQ and the last valid update.
+  if (tick_time->tm_min % 5 == 0) layer_mark_dirty(s_weather_arc_layer); 
 
   #if defined(PBL_HEALTH)
   if (tick_time->tm_hour == 0 && tick_time->tm_min == 0) { 
@@ -469,20 +521,27 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
     persist_delete(PERSIST_KEY_LAST_SLEEP_SEC);
   }
   if (s_show_sleep && (int)health_service_sum_today(HealthMetricSleepSeconds) >= s_last_sleep_sec + 7200) { 
-    layer_mark_dirty(s_sleep_layer); 
-    animate_sleep_layer(true); 
+    layer_mark_dirty(s_sleep_layer);
+    bool was_hidden = layer_get_frame(s_sleep_layer).origin.y >= 228;
+    animate_sleep_layer(true);
+    if (was_hidden && s_sleep_duration > 0 && !s_sleep_dismiss_timer) {
+      s_sleep_dismiss_timer = app_timer_register(s_sleep_duration * 1000, sleep_dismiss_callback, NULL);
+    } 
   } else {
     animate_sleep_layer(false); 
   }
   for(int i = 0; i < HR_HISTORY_SIZE - 1; i++) s_hr_history[i] = s_hr_history[i+1]; 
-  s_hr_history[HR_HISTORY_SIZE - 1] = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+  int sampled_bpm = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+  s_hr_history[HR_HISTORY_SIZE - 1] = sampled_bpm > 0 ? sampled_bpm : 0;
   layer_mark_dirty(s_hr_graph_layer); 
   #endif
 }
 
 static void update_health() {
   #if defined(PBL_HEALTH)
-  snprintf(s_hr_buf, sizeof(s_hr_buf), "%d", (int)health_service_peek_current_value(HealthMetricHeartRateBPM)); 
+  int bpm = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+  if (bpm > 0) snprintf(s_hr_buf, sizeof(s_hr_buf), "%d", bpm);
+  else snprintf(s_hr_buf, sizeof(s_hr_buf), "--"); 
   text_layer_set_text(s_hr_layer, s_hr_buf); 
   
   int dist_m = (int)health_service_sum_today(HealthMetricWalkedDistanceMeters);
@@ -622,20 +681,20 @@ static void main_window_load(Window *window) {
   layer_add_child(s_forecast_container, text_layer_get_layer(s_f_temp3_layer)); 
 
   #if defined(PBL_HEALTH)
-  for(int i = 0; i < HR_HISTORY_SIZE; i++) s_hr_history[i] = 60; 
+  for(int i = 0; i < HR_HISTORY_SIZE; i++) s_hr_history[i] = 0; 
   time_t end_time = time(NULL);
   time_t start_time = end_time - (HR_HISTORY_SIZE * SECONDS_PER_MINUTE);
   HealthMinuteData minute_data[HR_HISTORY_SIZE]; 
   uint32_t num_records = health_service_get_minute_history(minute_data, HR_HISTORY_SIZE, &start_time, &end_time);
   if (num_records > 0) { 
     int offset = HR_HISTORY_SIZE - num_records; 
-    int last_valid_hr = 60; 
+    int last_valid_hr = 0; 
     for (uint32_t i = 0; i < num_records; i++) {
       int hr = minute_data[i].heart_rate_bpm;
-      if (hr > 0) last_valid_hr = hr; 
+      last_valid_hr = (!minute_data[i].is_invalid && hr > 0) ? hr : 0; 
       if ((offset + i) < HR_HISTORY_SIZE) s_hr_history[offset + i] = last_valid_hr; 
     }
-    int oldest_hr = minute_data[0].heart_rate_bpm > 0 ? minute_data[0].heart_rate_bpm : 60;
+    int oldest_hr = 0;
     for (int i = 0; i < offset; i++) s_hr_history[i] = oldest_hr; 
   }
   int current_hr = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
@@ -665,7 +724,20 @@ static void main_window_unload(Window *window) {
   if (s_heart_bitmap) gbitmap_destroy(s_heart_bitmap); 
   if (s_f_bmp1) gbitmap_destroy(s_f_bmp1); 
   if (s_f_bmp2) gbitmap_destroy(s_f_bmp2); 
-  if (s_f_bmp3) gbitmap_destroy(s_f_bmp3); 
+  if (s_f_bmp3) gbitmap_destroy(s_f_bmp3);
+  if (s_view_swap_timer) { app_timer_cancel(s_view_swap_timer); s_view_swap_timer = NULL; }
+  if (s_sleep_dismiss_timer) { app_timer_cancel(s_sleep_dismiss_timer); s_sleep_dismiss_timer = NULL; }
+  bitmap_layer_destroy(s_weather_icon_layer);
+  bitmap_layer_destroy(s_heart_layer);
+  text_layer_destroy(s_time_layer);
+  text_layer_destroy(s_date_layer);
+  text_layer_destroy(s_hr_layer);
+  text_layer_destroy(s_dist_layer);
+  layer_destroy(s_weather_arc_layer);
+  layer_destroy(s_goals_canvas);
+  layer_destroy(s_hr_graph_layer);
+  layer_destroy(s_battery_layer);
+  layer_destroy(s_sleep_layer);
   
   text_layer_destroy(s_f_day1_layer); 
   text_layer_destroy(s_f_day2_layer); 
@@ -689,7 +761,7 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
   bool layout_changed = false;
 
   while(t) { 
-    if(t->key == MESSAGE_KEY_TEMP_CURRENT) s_cur = get_int(t);
+    if(t->key == MESSAGE_KEY_TEMP_CURRENT) { s_cur = get_int(t); s_has_weather = true; s_last_weather_success = time(NULL); }
     else if(t->key == MESSAGE_KEY_TEMP_HIGH) s_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_TEMP_LOW) s_lo = get_int(t);
     else if(t->key == MESSAGE_KEY_CONDITIONS) set_weather_icon(t->value->cstring);
@@ -703,18 +775,27 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     else if(t->key == MESSAGE_KEY_THEME_MODE) {
       if (s_theme_mode != get_int(t)) { s_theme_mode = get_int(t); theme_changed = true; }
     }
+    else if(t->key == MESSAGE_KEY_SLEEP_BRIEF_SECONDS) {
+      int seconds = get_int(t);
+      s_sleep_duration = (seconds == 15 || seconds == 30 || seconds == 60) ? seconds : 0;
+    }
+    else if(t->key == MESSAGE_KEY_HR_GRAPH_WINDOW) {
+      int size = get_int(t);
+      s_hr_window = (size == 30 || size == 60) ? size : 20;
+      layer_mark_dirty(s_hr_graph_layer);
+    }
     else if(t->key == MESSAGE_KEY_DEFAULT_VIEW) {
       if (s_default_view != get_int(t)) { s_default_view = get_int(t); layout_changed = true; }
     }
     else if(t->key == MESSAGE_KEY_DAY1_HIGH) s_d1_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY1_LOW) s_d1_lo = get_int(t);
-    else if(t->key == MESSAGE_KEY_DAY1_ICON) strncpy(s_d1_ic, t->value->cstring, sizeof(s_d1_ic));
+    else if(t->key == MESSAGE_KEY_DAY1_ICON) snprintf(s_d1_ic, sizeof(s_d1_ic), "%s", t->value->cstring);
     else if(t->key == MESSAGE_KEY_DAY2_HIGH) s_d2_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY2_LOW) s_d2_lo = get_int(t);
-    else if(t->key == MESSAGE_KEY_DAY2_ICON) strncpy(s_d2_ic, t->value->cstring, sizeof(s_d2_ic));
+    else if(t->key == MESSAGE_KEY_DAY2_ICON) snprintf(s_d2_ic, sizeof(s_d2_ic), "%s", t->value->cstring);
     else if(t->key == MESSAGE_KEY_DAY3_HIGH) s_d3_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY3_LOW) s_d3_lo = get_int(t);
-    else if(t->key == MESSAGE_KEY_DAY3_ICON) strncpy(s_d3_ic, t->value->cstring, sizeof(s_d3_ic));
+    else if(t->key == MESSAGE_KEY_DAY3_ICON) snprintf(s_d3_ic, sizeof(s_d3_ic), "%s", t->value->cstring);
 
     t = dict_read_next(iter); 
   }
@@ -750,5 +831,14 @@ static void init() {
 
 int main(void) { 
   init(); 
-  app_event_loop(); 
+  app_event_loop();
+  tick_timer_service_unsubscribe();
+  battery_state_service_unsubscribe();
+  accel_tap_service_unsubscribe();
+  connection_service_unsubscribe();
+  #if defined(PBL_HEALTH)
+  health_service_events_unsubscribe();
+  #endif
+  app_message_deregister_callbacks();
+  window_destroy(s_main_window);
 }

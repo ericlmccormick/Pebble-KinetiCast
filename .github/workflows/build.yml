@@ -1,0 +1,35 @@
+name: Pebble build and static checks
+
+on:
+  push:
+    branches: [main, improve-reliability-sdk-2026]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: astral-sh/setup-uv@v6
+      - name: Install Pebble build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-2.0-0 libglib2.0-0 libpixman-1-0 zlib1g libsndio7.0
+      - name: Check JavaScript syntax and manifest
+        run: |
+          node --check src/pkjs/index.js
+          node --check src/pkjs/custom-clay.js
+          node -e "const p=require('./package.json');if(p.pebble.sdkVersion!=='3'||!p.pebble.targetPlatforms.includes('emery'))process.exit(1)"
+      - name: Install Pebble CLI and latest SDK
+        run: |
+          uv tool install pebble-tool
+          pebble sdk install latest
+          pebble sdk list
+      - name: Build for Emery
+        run: pebble build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kineticast-emery
+          path: build/*.pbw
+          if-no-files-found: error

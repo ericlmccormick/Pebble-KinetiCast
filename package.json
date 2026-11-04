@@ -39,7 +39,9 @@
             "UPDATE_FREQ": 10,
             "USE_GPS": 27,
             "UV_INDEX": 11,
-            "WEATHER_PROVIDER": 26
+            "WEATHER_PROVIDER": 26,
+            "HR_GRAPH_WINDOW": 29,
+            "SLEEP_BRIEF_SECONDS": 30
         },
         "projectType": "native",
         "resources": {
