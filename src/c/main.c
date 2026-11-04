@@ -25,8 +25,9 @@
 #define PERSIST_KEY_D3_LO 27
 #define PERSIST_KEY_D3_IC 28
 #define PERSIST_KEY_WEATHER_TIME 29
+#define PERSIST_KEY_HR_WINDOW 30
 
-#define HR_HISTORY_SIZE 20 
+#define HR_HISTORY_SIZE 60 
 
 // ==============================================================================
 // SECTION: STATE VARIABLES & UI POINTERS
@@ -47,7 +48,8 @@ static GBitmap *s_f_bmp1 = NULL, *s_f_bmp2 = NULL, *s_f_bmp3 = NULL;
 static AppTimer *s_view_swap_timer = NULL; 
 
 static int s_cur = 0, s_hi = 0, s_lo = 0, s_uv = 0; 
-static int s_update_freq = 30, s_battery_level = 100; 
+static int s_update_freq = 30, s_battery_level = 100;
+static int s_hr_window = 20; 
 static int s_step_goal = 10000, s_active_goal = 30; 
 static bool s_connected = true, s_use_metric = false, s_is_night = false, s_show_sleep = true; 
 static int s_theme_mode = 0, s_default_view = 0; 
@@ -104,6 +106,8 @@ static void request_weather() {
   time_t now = time(NULL);
   if (!s_connected || (s_last_weather_request && now - s_last_weather_request < 60)) return;
   int interval = s_update_freq < 10 ? 10 : (s_update_freq > 120 ? 120 : s_update_freq);
+  // Reduce radio use automatically at critically low battery.
+  if (s_battery_level <= 15) interval *= 2;
   if (s_has_weather && now - s_last_weather_success < interval * 60) return;
   
   DictionaryIterator *iter; 
@@ -128,7 +132,8 @@ static void save_weather_data() {
   if (s_has_weather) persist_write_int(PERSIST_KEY_WEATHER_TIME, (int)s_last_weather_success); 
   persist_write_bool(PERSIST_KEY_SHOW_SLEEP, s_show_sleep); 
   persist_write_int(PERSIST_KEY_THEME_MODE, s_theme_mode); 
-  persist_write_int(PERSIST_KEY_DEFAULT_VIEW, s_default_view); 
+  persist_write_int(PERSIST_KEY_DEFAULT_VIEW, s_default_view);
+  persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window); 
   
   persist_write_int(PERSIST_KEY_D1_HI, s_d1_hi);
   persist_write_int(PERSIST_KEY_D1_LO, s_d1_lo);
@@ -156,6 +161,10 @@ static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_SHOW_SLEEP)) s_show_sleep = persist_read_bool(PERSIST_KEY_SHOW_SLEEP);
   if (persist_exists(PERSIST_KEY_THEME_MODE)) s_theme_mode = persist_read_int(PERSIST_KEY_THEME_MODE);
   if (persist_exists(PERSIST_KEY_DEFAULT_VIEW)) s_default_view = persist_read_int(PERSIST_KEY_DEFAULT_VIEW);
+  if (persist_exists(PERSIST_KEY_HR_WINDOW)) {
+    int value = persist_read_int(PERSIST_KEY_HR_WINDOW);
+    s_hr_window = (value == 30 || value == 60) ? value : 20;
+  }
   
   if (persist_exists(PERSIST_KEY_D1_HI)) s_d1_hi = persist_read_int(PERSIST_KEY_D1_HI);
   if (persist_exists(PERSIST_KEY_D1_LO)) s_d1_lo = persist_read_int(PERSIST_KEY_D1_LO);
@@ -327,9 +336,11 @@ static void hr_graph_update_proc(Layer *layer, GContext *ctx) {
   #if defined(PBL_HEALTH) 
   GRect bounds = layer_get_bounds(layer); 
   graphics_context_set_stroke_width(ctx, 2); 
-  int step_x = (bounds.size.w - 1) / (HR_HISTORY_SIZE - 1); 
-  
-  for(int i = 0; i < HR_HISTORY_SIZE - 1; i++) {
+  int visible = s_hr_window;
+  if (visible != 20 && visible != 30 && visible != 60) visible = 20;
+  int first = HR_HISTORY_SIZE - visible;
+  // Multiplication before division retains width on small graph layers.
+  for (int i = first; i < HR_HISTORY_SIZE - 1; i++) {
     if (s_hr_history[i] <= 0 || s_hr_history[i+1] <= 0) continue;
     int y1 = bounds.size.h - ((s_hr_history[i] - 55) / 2); 
     int y2 = bounds.size.h - ((s_hr_history[i+1] - 55) / 2);
@@ -346,7 +357,9 @@ static void hr_graph_update_proc(Layer *layer, GContext *ctx) {
     else if (avg_hr > 95) line_color = GColorChromeYellow; 
 
     graphics_context_set_stroke_color(ctx, line_color); 
-    graphics_draw_line(ctx, GPoint(i * step_x, y1), GPoint((i+1) * step_x, y2)); 
+    int x1 = ((i - first) * (bounds.size.w - 1)) / (visible - 1);
+    int x2 = ((i + 1 - first) * (bounds.size.w - 1)) / (visible - 1);
+    graphics_draw_line(ctx, GPoint(x1, y1), GPoint(x2, y2)); 
   }
   #endif
 }
@@ -738,6 +751,11 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     else if(t->key == MESSAGE_KEY_SHOW_SLEEP) s_show_sleep = (get_int(t) == 1); 
     else if(t->key == MESSAGE_KEY_THEME_MODE) {
       if (s_theme_mode != get_int(t)) { s_theme_mode = get_int(t); theme_changed = true; }
+    }
+    else if(t->key == MESSAGE_KEY_HR_GRAPH_WINDOW) {
+      int size = get_int(t);
+      s_hr_window = (size == 30 || size == 60) ? size : 20;
+      layer_mark_dirty(s_hr_graph_layer);
     }
     else if(t->key == MESSAGE_KEY_DEFAULT_VIEW) {
       if (s_default_view != get_int(t)) { s_default_view = get_int(t); layout_changed = true; }
