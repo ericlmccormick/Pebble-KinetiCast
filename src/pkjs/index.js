@@ -172,6 +172,7 @@ var weatherRetryTimer = null;
 var weatherFailures = 0;
 var lastWeatherSuccess = 0;
 var lastWeatherAttempt = 0;
+var weatherAutoFallback = null;
 
 
 function desiredTempUnit(settings) {
@@ -204,6 +205,15 @@ function weatherIntervalMs(settings) {
 function weatherFinished(ok, detail) {
   if (!weatherInFlight) return;
   if (weatherWatchdog) { clearTimeout(weatherWatchdog); weatherWatchdog = null; }
+  if (!ok && weatherAutoFallback && weatherAutoFallback.index + 1 < weatherAutoFallback.providers.length) {
+    weatherAutoFallback.index++;
+    var next = weatherAutoFallback.providers[weatherAutoFallback.index];
+    console.log('KinetiCast: ' + detail + '; falling back to ' + next);
+    weatherWatchdog = setTimeout(function() { weatherFinished(false, 'fallback timeout'); }, 35000);
+    fetchNamedProvider(next, weatherAutoFallback.lat, weatherAutoFallback.lon, 'metric', weatherAutoFallback.settings);
+    return;
+  }
+  weatherAutoFallback = null;
   weatherInFlight = false;
   if (ok) {
     weatherFailures = 0;
@@ -244,6 +254,17 @@ function sendWeatherData(dict) {
     weatherFinished(false, 'AppMessage delivery failed');
   });
 }
+function guardWeatherLoad(xhr) {
+  var handler = xhr.onload;
+  xhr.onload = function() {
+    if (xhr.status < 200 || xhr.status >= 300) {
+      weatherFinished(false, 'HTTP ' + xhr.status); return;
+    }
+    try { if (handler) handler.call(xhr); }
+    catch (error) { weatherFinished(false, 'invalid provider response: ' + error.message); }
+  };
+}
+
 function weatherXHR() {
   var xhr = new XMLHttpRequest();
   xhr.timeout = 15000;
@@ -289,6 +310,7 @@ function fetchOpenMeteo(lat, lon, units, settings) {
     }
   };
   xhr.open('GET', url);
+  guardWeatherLoad(xhr);
   xhr.send();
 }
 
@@ -368,6 +390,7 @@ function fetchMetNo(lat, lon, units, settings) {
       sendWeatherData(dict);
     }
   };
+  guardWeatherLoad(xhr);
   xhr.send();
 }
 
@@ -454,9 +477,11 @@ function fetchNWS(lat, lon, units, settings) {
           sendWeatherData(dict);
         }
       };
-      xhr2.send();
+      guardWeatherLoad(xhr2);
+  xhr2.send();
     }
   };
+  guardWeatherLoad(xhr1);
   xhr1.send();
 }
 
@@ -498,6 +523,7 @@ function fetchOpenWeather(lat, lon, units, settings) {
     }
   };
   xhr.open('GET', url);
+  guardWeatherLoad(xhr);
   xhr.send();
 }
 
@@ -505,8 +531,7 @@ function fetchOpenWeather(lat, lon, units, settings) {
 // SECTION: ROUTING & GEOCODING LOGIC
 // ==============================================================================
 
-function executeProviderFetch(lat, lon, units, settings) {
-  var provider = settings.WEATHER_PROVIDER || 'auto';
+function fetchNamedProvider(provider, lat, lon, units, settings) {
   if (provider === 'openweathermap') {
     fetchOpenWeather(lat, lon, units, settings);
   } else if (provider === 'metno') {
@@ -516,6 +541,19 @@ function executeProviderFetch(lat, lon, units, settings) {
   } else {
     fetchOpenMeteo(lat, lon, units, settings);
   }
+}
+function executeProviderFetch(lat, lon, units, settings) {
+  var provider = settings.WEATHER_PROVIDER || 'auto';
+  if (provider === 'openweather') provider = 'openweathermap';
+  if (provider === 'auto') {
+    var inContiguousUS = lat >= 24 && lat <= 50 && lon >= -125 && lon <= -66;
+    weatherAutoFallback = {
+      providers: inContiguousUS ? ['openmeteo','nws','metno'] : ['openmeteo','metno'],
+      index: 0, lat: lat, lon: lon, settings: settings
+    };
+    provider = weatherAutoFallback.providers[0];
+  } else weatherAutoFallback = null;
+  fetchNamedProvider(provider, lat, lon, units, settings);
 }
 
 function getWeather() {
@@ -549,7 +587,8 @@ function getWeather() {
         }
       };
       xhrOWM.open('GET', geoUrl);
-      xhrOWM.send();
+      guardWeatherLoad(xhrOWM);
+  xhrOWM.send();
     } else {
       geoUrl = 'https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(settings.MANUAL_LOCATION) + '&count=1&language=en&format=json';
       var xhrOM = weatherXHR();
@@ -562,7 +601,8 @@ function getWeather() {
         }
       };
       xhrOM.open('GET', geoUrl);
-      xhrOM.send();
+      guardWeatherLoad(xhrOM);
+  xhrOM.send();
     }
   } else {
     weatherFinished(false, 'enable GPS or enter a manual location');
