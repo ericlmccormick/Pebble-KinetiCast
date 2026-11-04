@@ -162,7 +162,10 @@ function weatherFinished(ok, detail) {
   }, delay);
 }
 function sendWeatherData(dict) {
-  if (!isFinite(dict.TEMP_CURRENT) || !isFinite(dict.TEMP_HIGH) || !isFinite(dict.TEMP_LOW)) {
+  if (!isFinite(dict.TEMP_CURRENT) || !isFinite(dict.TEMP_HIGH) || !isFinite(dict.TEMP_LOW) ||
+      !isFinite(dict.DAY1_HIGH) || !isFinite(dict.DAY1_LOW) ||
+      !isFinite(dict.DAY2_HIGH) || !isFinite(dict.DAY2_LOW) ||
+      !isFinite(dict.DAY3_HIGH) || !isFinite(dict.DAY3_LOW)) {
     weatherFinished(false, 'invalid provider temperature'); return;
   }
   Pebble.sendAppMessage(dict, function() {
@@ -228,7 +231,7 @@ function fetchMetNo(lat, lon, units, settings) {
   
   var xhr = weatherXHR();
   xhr.open('GET', url);
-  xhr.setRequestHeader('User-Agent', 'KinetiCastPebbleApp/2.2 (contact@example.com)');
+  xhr.setRequestHeader('User-Agent', 'KinetiCast/2.2 (https://github.com/ericlmccormick/Pebble_Health_and_Weather)');
   xhr.onload = function() {
     if (this.status === 200) {
       var json = JSON.parse(this.responseText);
@@ -307,7 +310,7 @@ function fetchNWS(lat, lon, units, settings) {
   
   var xhr1 = weatherXHR();
   xhr1.open('GET', pointUrl);
-  xhr1.setRequestHeader('User-Agent', 'KinetiCastPebbleApp/2.2 (contact@example.com)');
+  xhr1.setRequestHeader('User-Agent', 'KinetiCast/2.2 (https://github.com/ericlmccormick/Pebble_Health_and_Weather)');
   xhr1.onload = function() {
     if (this.status === 200) {
       var json1 = JSON.parse(this.responseText);
@@ -315,7 +318,7 @@ function fetchNWS(lat, lon, units, settings) {
       
       var xhr2 = weatherXHR();
       xhr2.open('GET', forecastUrl);
-      xhr2.setRequestHeader('User-Agent', 'KinetiCastPebbleApp/2.2 (contact@example.com)');
+      xhr2.setRequestHeader('User-Agent', 'KinetiCast/2.2 (https://github.com/ericlmccormick/Pebble_Health_and_Weather)');
       xhr2.onload = function() {
         if (this.status === 200) {
           var json2 = JSON.parse(this.responseText);
