@@ -4,28 +4,42 @@
         "pebble-clay": "^1.0.4"
     },
     "keywords": [],
-    "name": "health-and-weather",
+    "name": "kineticast",
     "pebble": {
         "capabilities": [
             "location",
             "configurable",
             "health"
         ],
-        "displayName": "Health and Weather",
+        "displayName": "KinetiCast - Health and Weather",
         "enableMultiJS": true,
         "messageKeys": {
-            "ACTIVE_GOAL": 8,
-            "API_KEY": 4,
+            "API_KEY": 13,
             "CONDITIONS": 1,
+            "DAY1_HIGH": 17,
+            "DAY1_ICON": 19,
+            "DAY1_LOW": 18,
+            "DAY2_HIGH": 20,
+            "DAY2_ICON": 22,
+            "DAY2_LOW": 21,
+            "DAY3_HIGH": 23,
+            "DAY3_ICON": 25,
+            "DAY3_LOW": 24,
+            "DEFAULT_VIEW": 16,
             "IS_NIGHT": 9,
-            "STEP_GOAL": 7,
+            "MANUAL_LOCATION": 28,
+            "REQUEST_WEATHER": 14,
+            "SHOW_SLEEP": 12,
             "TEMP_CURRENT": 0,
             "TEMP_HIGH": 2,
             "TEMP_LOW": 3,
+            "THEME_MODE": 15,
             "TIME_FORMAT": 6,
-            "UNITS": 5,
+            "UNITS": 4,
             "UPDATE_FREQ": 10,
-            "UV_INDEX": 11
+            "USE_GPS": 27,
+            "UV_INDEX": 11,
+            "WEATHER_PROVIDER": 26
         },
         "projectType": "native",
         "resources": {
@@ -167,6 +181,13 @@
                     "name": "ICON_CLEAR_NIGHT",
                     "targetPlatforms": null,
                     "type": "bitmap"
+                },
+                {
+                    "file": "images/logo25.png",
+                    "menuIcon": true,
+                    "name": "LOGO",
+                    "targetPlatforms": null,
+                    "type": "bitmap"
                 }
             ]
         },
@@ -179,5 +200,5 @@
             "watchface": true
         }
     },
-    "version": "1.6.0"
+    "version": "2.2.1"
 }
