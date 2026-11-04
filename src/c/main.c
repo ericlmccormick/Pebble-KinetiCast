@@ -26,6 +26,7 @@
 #define PERSIST_KEY_D3_IC 28
 #define PERSIST_KEY_WEATHER_TIME 29
 #define PERSIST_KEY_HR_WINDOW 30
+#define PERSIST_KEY_SLEEP_DURATION 31
 
 #define HR_HISTORY_SIZE 60 
 
@@ -45,7 +46,9 @@ static TextLayer *s_f_day1_layer, *s_f_day2_layer, *s_f_day3_layer;
 static TextLayer *s_f_temp1_layer, *s_f_temp2_layer, *s_f_temp3_layer; 
 static BitmapLayer *s_f_icon1_layer, *s_f_icon2_layer, *s_f_icon3_layer; 
 static GBitmap *s_f_bmp1 = NULL, *s_f_bmp2 = NULL, *s_f_bmp3 = NULL; 
-static AppTimer *s_view_swap_timer = NULL; 
+static AppTimer *s_view_swap_timer = NULL;
+static AppTimer *s_sleep_dismiss_timer = NULL;
+static int s_sleep_duration = 0; // 0: require tap; otherwise auto-dismiss seconds 
 
 static int s_cur = 0, s_hi = 0, s_lo = 0, s_uv = 0; 
 static int s_update_freq = 30, s_battery_level = 100;
@@ -133,7 +136,8 @@ static void save_weather_data() {
   persist_write_bool(PERSIST_KEY_SHOW_SLEEP, s_show_sleep); 
   persist_write_int(PERSIST_KEY_THEME_MODE, s_theme_mode); 
   persist_write_int(PERSIST_KEY_DEFAULT_VIEW, s_default_view);
-  persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window); 
+  persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window);
+  persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration); 
   
   persist_write_int(PERSIST_KEY_D1_HI, s_d1_hi);
   persist_write_int(PERSIST_KEY_D1_LO, s_d1_lo);
@@ -161,6 +165,10 @@ static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_SHOW_SLEEP)) s_show_sleep = persist_read_bool(PERSIST_KEY_SHOW_SLEEP);
   if (persist_exists(PERSIST_KEY_THEME_MODE)) s_theme_mode = persist_read_int(PERSIST_KEY_THEME_MODE);
   if (persist_exists(PERSIST_KEY_DEFAULT_VIEW)) s_default_view = persist_read_int(PERSIST_KEY_DEFAULT_VIEW);
+  if (persist_exists(PERSIST_KEY_SLEEP_DURATION)) {
+    int duration = persist_read_int(PERSIST_KEY_SLEEP_DURATION);
+    s_sleep_duration = (duration == 15 || duration == 30 || duration == 60) ? duration : 0;
+  }
   if (persist_exists(PERSIST_KEY_HR_WINDOW)) {
     int value = persist_read_int(PERSIST_KEY_HR_WINDOW);
     s_hr_window = (value == 30 || value == 60) ? value : 20;
@@ -178,7 +186,8 @@ static void load_weather_data() {
 }
 
 static void tap_handler(AccelAxisType axis, int32_t direction) {
-  if (layer_get_frame(s_sleep_layer).origin.y < 228) { 
+  if (layer_get_frame(s_sleep_layer).origin.y < 228) {
+    if (s_sleep_dismiss_timer) { app_timer_cancel(s_sleep_dismiss_timer); s_sleep_dismiss_timer = NULL; } 
     animate_sleep_layer(false); 
     #if defined(PBL_HEALTH) 
     s_last_sleep_sec = (int)health_service_sum_today(HealthMetricSleepSeconds);
@@ -223,6 +232,15 @@ static void animate_sleep_layer(bool slide_up) {
 }
 
 // CHANGED: The containers now slide up to Y=126 and use a height of 96 to properly fit the layout
+static void sleep_dismiss_callback(void *context) {
+  s_sleep_dismiss_timer = NULL;
+  animate_sleep_layer(false);
+  #if defined(PBL_HEALTH)
+  s_last_sleep_sec = (int)health_service_sum_today(HealthMetricSleepSeconds);
+  persist_write_int(PERSIST_KEY_LAST_SLEEP_SEC, s_last_sleep_sec);
+  #endif
+}
+
 static void execute_panel_transition(bool alternate_view) {
   s_view_is_swapped = alternate_view; 
   bool display_forecast = (s_default_view == 0) ? s_view_is_swapped : !s_view_is_swapped;
@@ -376,7 +394,7 @@ static void sleep_layer_update_proc(Layer *layer, GContext *ctx) {
   int sleep_sec = (int)health_service_sum_today(HealthMetricSleepSeconds); 
   int restful_sec = (int)health_service_sum_today(HealthMetricSleepRestfulSeconds); 
   if (sleep_sec > 0) { 
-    snprintf(s_sleep_buf, sizeof(s_sleep_buf), "Sleep: %dh %dm\nDeep/Restful: %d%%", sleep_sec / 3600, (sleep_sec % 3600) / 60, (restful_sec * 100) / sleep_sec);
+    snprintf(s_sleep_buf, sizeof(s_sleep_buf), "Sleep: %dh %dm\nRestful: %d%%", sleep_sec / 3600, (sleep_sec % 3600) / 60, (restful_sec * 100) / sleep_sec);
   } else {
     snprintf(s_sleep_buf, sizeof(s_sleep_buf), "Calculating Sleep...");
   }
@@ -503,8 +521,12 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
     persist_delete(PERSIST_KEY_LAST_SLEEP_SEC);
   }
   if (s_show_sleep && (int)health_service_sum_today(HealthMetricSleepSeconds) >= s_last_sleep_sec + 7200) { 
-    layer_mark_dirty(s_sleep_layer); 
-    animate_sleep_layer(true); 
+    layer_mark_dirty(s_sleep_layer);
+    bool was_hidden = layer_get_frame(s_sleep_layer).origin.y >= 228;
+    animate_sleep_layer(true);
+    if (was_hidden && s_sleep_duration > 0 && !s_sleep_dismiss_timer) {
+      s_sleep_dismiss_timer = app_timer_register(s_sleep_duration * 1000, sleep_dismiss_callback, NULL);
+    } 
   } else {
     animate_sleep_layer(false); 
   }
@@ -704,6 +726,7 @@ static void main_window_unload(Window *window) {
   if (s_f_bmp2) gbitmap_destroy(s_f_bmp2); 
   if (s_f_bmp3) gbitmap_destroy(s_f_bmp3);
   if (s_view_swap_timer) { app_timer_cancel(s_view_swap_timer); s_view_swap_timer = NULL; }
+  if (s_sleep_dismiss_timer) { app_timer_cancel(s_sleep_dismiss_timer); s_sleep_dismiss_timer = NULL; }
   bitmap_layer_destroy(s_weather_icon_layer);
   bitmap_layer_destroy(s_heart_layer);
   text_layer_destroy(s_time_layer);
@@ -751,6 +774,10 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     else if(t->key == MESSAGE_KEY_SHOW_SLEEP) s_show_sleep = (get_int(t) == 1); 
     else if(t->key == MESSAGE_KEY_THEME_MODE) {
       if (s_theme_mode != get_int(t)) { s_theme_mode = get_int(t); theme_changed = true; }
+    }
+    else if(t->key == MESSAGE_KEY_SLEEP_BRIEF_SECONDS) {
+      int seconds = get_int(t);
+      s_sleep_duration = (seconds == 15 || seconds == 30 || seconds == 60) ? seconds : 0;
     }
     else if(t->key == MESSAGE_KEY_HR_GRAPH_WINDOW) {
       int size = get_int(t);
