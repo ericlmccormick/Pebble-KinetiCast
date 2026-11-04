@@ -27,6 +27,8 @@
 #define PERSIST_KEY_WEATHER_TIME 29
 #define PERSIST_KEY_HR_WINDOW 30
 #define PERSIST_KEY_SLEEP_DURATION 31
+#define PERSIST_KEY_TEMP_UNIT 32
+#define PERSIST_KEY_DISTANCE_UNIT 33
 
 #define HR_HISTORY_SIZE 60 
 
@@ -54,7 +56,8 @@ static int s_cur = 0, s_hi = 0, s_lo = 0, s_uv = 0;
 static int s_update_freq = 30, s_battery_level = 100;
 static int s_hr_window = 20; 
 static int s_step_goal = 10000, s_active_goal = 30; 
-static bool s_connected = true, s_use_metric = false, s_is_night = false, s_show_sleep = true; 
+static bool s_connected = true, s_use_metric = false, s_is_night = false, s_show_sleep = true;
+static int s_temp_unit = 0; // F=0, C=1, K=2, R=3 
 static int s_theme_mode = 0, s_default_view = 0; 
 static bool s_view_is_swapped = false; 
 
@@ -137,7 +140,9 @@ static void save_weather_data() {
   persist_write_int(PERSIST_KEY_THEME_MODE, s_theme_mode); 
   persist_write_int(PERSIST_KEY_DEFAULT_VIEW, s_default_view);
   persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window);
-  persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration); 
+  persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration);
+  persist_write_int(PERSIST_KEY_TEMP_UNIT, s_temp_unit);
+  persist_write_bool(PERSIST_KEY_DISTANCE_UNIT, s_use_metric); 
   
   persist_write_int(PERSIST_KEY_D1_HI, s_d1_hi);
   persist_write_int(PERSIST_KEY_D1_LO, s_d1_lo);
@@ -163,6 +168,11 @@ static void load_weather_data() {
   }
   if (persist_exists(PERSIST_KEY_LAST_SLEEP_SEC)) s_last_sleep_sec = persist_read_int(PERSIST_KEY_LAST_SLEEP_SEC);
   if (persist_exists(PERSIST_KEY_SHOW_SLEEP)) s_show_sleep = persist_read_bool(PERSIST_KEY_SHOW_SLEEP);
+  if (persist_exists(PERSIST_KEY_TEMP_UNIT)) {
+    int unit = persist_read_int(PERSIST_KEY_TEMP_UNIT);
+    s_temp_unit = (unit >= 0 && unit <= 3) ? unit : 0;
+  }
+  if (persist_exists(PERSIST_KEY_DISTANCE_UNIT)) s_use_metric = persist_read_bool(PERSIST_KEY_DISTANCE_UNIT);
   if (persist_exists(PERSIST_KEY_THEME_MODE)) s_theme_mode = persist_read_int(PERSIST_KEY_THEME_MODE);
   if (persist_exists(PERSIST_KEY_DEFAULT_VIEW)) s_default_view = persist_read_int(PERSIST_KEY_DEFAULT_VIEW);
   if (persist_exists(PERSIST_KEY_SLEEP_DURATION)) {
@@ -284,12 +294,12 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
   else snprintf(s_lo_buf, sizeof(s_lo_buf), "--"); 
   if (s_has_weather) snprintf(s_hi_buf, sizeof(s_hi_buf), "%d", s_hi);
   else snprintf(s_hi_buf, sizeof(s_hi_buf), "--"); 
-  graphics_draw_text(ctx, s_lo_buf, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(15, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
-  graphics_draw_text(ctx, s_hi_buf, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 50, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
+  graphics_draw_text(ctx, s_lo_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(15, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
+  graphics_draw_text(ctx, s_hi_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 50, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
   
-  if (s_has_weather) snprintf(s_cur_buf, sizeof(s_cur_buf), "%d", s_cur);
+  if (s_has_weather) snprintf(s_cur_buf, sizeof(s_cur_buf), "%d%s", s_cur, s_temp_unit == 0 ? "F" : (s_temp_unit == 1 ? "C" : (s_temp_unit == 2 ? "K" : "R")));
   else snprintf(s_cur_buf, sizeof(s_cur_buf), "--"); 
-  graphics_draw_text(ctx, s_cur_buf, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD), GRect(0, 15, bounds.size.w, 35), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL); 
+  graphics_draw_text(ctx, s_cur_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_28_BOLD), GRect(0, 15, bounds.size.w, 35), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL); 
   
   GRect arc_bounds = grect_inset(bounds, GEdgeInsets(14, 14, 28, 14)); 
   graphics_context_set_stroke_width(ctx, 4); 
@@ -546,7 +556,7 @@ static void update_health() {
   
   int dist_m = (int)health_service_sum_today(HealthMetricWalkedDistanceMeters);
   int dist_100th = s_use_metric ? (dist_m * 100) / 1000 : (dist_m * 100) / 1609;
-  snprintf(s_dist_buf, sizeof(s_dist_buf), "%d.%01d", dist_100th / 100, (dist_100th % 100) / 10);
+  snprintf(s_dist_buf, sizeof(s_dist_buf), "%d.%01d%s", dist_100th / 100, (dist_100th % 100) / 10, s_use_metric ? "km" : "mi");
   text_layer_set_text(s_dist_layer, s_dist_buf); 
   layer_mark_dirty(s_goals_canvas); 
   #endif
@@ -610,7 +620,7 @@ static void main_window_load(Window *window) {
   layer_add_child(s_health_container, s_goals_canvas); 
 
   s_dist_layer = text_layer_create(GRect(12, 34, 76, 35)); 
-  text_layer_set_font(s_dist_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD)); 
+  text_layer_set_font(s_dist_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD)); 
   text_layer_set_text_alignment(s_dist_layer, GTextAlignmentCenter); 
   text_layer_set_background_color(s_dist_layer, GColorClear); 
   layer_add_child(s_health_container, text_layer_get_layer(s_dist_layer)); 
@@ -766,7 +776,8 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     else if(t->key == MESSAGE_KEY_TEMP_LOW) s_lo = get_int(t);
     else if(t->key == MESSAGE_KEY_CONDITIONS) set_weather_icon(t->value->cstring);
     else if(t->key == MESSAGE_KEY_UPDATE_FREQ) s_update_freq = get_int(t);
-    else if(t->key == MESSAGE_KEY_UNITS) s_use_metric = (get_int(t) == 1);
+    else if(t->key == MESSAGE_KEY_UNITS || t->key == MESSAGE_KEY_DISTANCE_UNIT) { s_use_metric = (get_int(t) == 1); update_health(); }
+    else if(t->key == MESSAGE_KEY_TEMP_UNIT) { int unit = get_int(t); s_temp_unit = (unit >= 0 && unit <= 3) ? unit : 0; }
     else if(t->key == MESSAGE_KEY_UV_INDEX) s_uv = get_int(t);
     else if(t->key == MESSAGE_KEY_IS_NIGHT) {
       if (s_is_night != (get_int(t) == 1)) { s_is_night = (get_int(t) == 1); theme_changed = true; }

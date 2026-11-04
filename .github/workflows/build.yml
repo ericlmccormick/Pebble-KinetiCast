@@ -21,6 +21,8 @@ jobs:
           node --check src/pkjs/index.js
           node --check src/pkjs/custom-clay.js
           node tests/weather-xhr.test.js
+          node tests/weather-units.test.js
+          node tests/weather-providers.test.js
           node -e "const p=require('./package.json');if(p.pebble.sdkVersion!=='3'||!p.pebble.targetPlatforms.includes('emery'))process.exit(1)"
       - name: Install Pebble CLI and latest SDK
         run: |
