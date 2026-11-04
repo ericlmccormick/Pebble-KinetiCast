@@ -69,6 +69,15 @@ var clayConfig = [
         ]
       },
       { "type": "toggle", "messageKey": "SHOW_SLEEP", "label": "Display Morning Sleep Briefing", "defaultValue": true },
+      { "type": "select", "messageKey": "SLEEP_BRIEF_SECONDS",
+        "label": "Sleep Briefing Auto-Hide", "defaultValue": "0",
+        "options": [
+          { "label": "Stay until tapped", "value": "0" },
+          { "label": "15 seconds", "value": "15" },
+          { "label": "30 seconds", "value": "30" },
+          { "label": "60 seconds", "value": "60" }
+        ]
+      },
       {
         "type": "select", "messageKey": "HR_GRAPH_WINDOW",
         "label": "Heart Rate Graph History", "defaultValue": "20",
@@ -580,7 +589,8 @@ Pebble.addEventListener('webviewclosed', function(e) {
     'SHOW_SLEEP': (settings.SHOW_SLEEP == true || settings.SHOW_SLEEP === "true" || settings.SHOW_SLEEP == 1) ? 1 : 0,
     'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
     'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
-    'HR_GRAPH_WINDOW': parseInt(settings.HR_GRAPH_WINDOW, 10) || 20
+    'HR_GRAPH_WINDOW': parseInt(settings.HR_GRAPH_WINDOW, 10) || 20,
+    'SLEEP_BRIEF_SECONDS': parseInt(settings.SLEEP_BRIEF_SECONDS, 10) || 0
   };
   
   Pebble.sendAppMessage(appDict, function() {
