@@ -8,7 +8,7 @@ const match = source.match(/function weatherXHR\(\)\s*\{[\s\S]*?\n\}/);
 assert.ok(match, 'weatherXHR factory must exist');
 let constructors = 0;
 function MockXHR() { constructors++; }
-const sandbox = { XMLHttpRequest: MockXHR, weatherFinished: function () {} };
+const sandbox = { XMLHttpRequest: MockXHR, weatherFinished: function () {}, weatherGeneration: 1, weatherRequests: [], weatherInFlight: true, activeWeatherGeneration: function() { return true; } };
 vm.runInNewContext(match[0], sandbox, { timeout: 1000 });
 const xhr = sandbox.weatherXHR();
 assert.ok(xhr instanceof MockXHR, 'weatherXHR must return an XMLHttpRequest');
