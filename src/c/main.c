@@ -297,7 +297,7 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
   graphics_draw_text(ctx, s_lo_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(15, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
   graphics_draw_text(ctx, s_hi_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 50, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
   
-  if (s_has_weather) snprintf(s_cur_buf, sizeof(s_cur_buf), "%d", s_cur);
+  if (s_has_weather) snprintf(s_cur_buf, sizeof(s_cur_buf), "%d%s", s_cur, s_temp_unit == 0 ? "F" : (s_temp_unit == 1 ? "C" : (s_temp_unit == 2 ? "K" : "R")));
   else snprintf(s_cur_buf, sizeof(s_cur_buf), "--"); 
   graphics_draw_text(ctx, s_cur_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_28_BOLD), GRect(0, 15, bounds.size.w, 35), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL); 
   
