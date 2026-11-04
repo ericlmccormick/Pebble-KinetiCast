@@ -175,6 +175,13 @@ var lastWeatherAttempt = 0;
 var weatherAutoFallback = null;
 var weatherGeneration = 0;
 var weatherRequests = [];
+function armWeatherWatchdog(ms) {
+  if (weatherWatchdog) clearTimeout(weatherWatchdog);
+  var generation = weatherGeneration;
+  weatherWatchdog = setTimeout(function() {
+    if (activeWeatherGeneration(generation)) weatherFinished(false, 'request timeout');
+  }, ms);
+}
 
 function cancelWeatherRequests() {
   var old = weatherRequests;
@@ -221,8 +228,7 @@ function weatherFinished(ok, detail) {
     weatherAutoFallback.index++;
     var next = weatherAutoFallback.providers[weatherAutoFallback.index];
     console.log('KinetiCast: ' + detail + '; falling back to ' + next);
-    var fallbackGeneration = weatherGeneration;
-    weatherWatchdog = setTimeout(function() { if(activeWeatherGeneration(fallbackGeneration)) weatherFinished(false, 'fallback timeout'); }, 35000);
+    armWeatherWatchdog(next === 'nws' ? 65000 : 35000);
     fetchNamedProvider(next, weatherAutoFallback.lat, weatherAutoFallback.lon, 'metric', weatherAutoFallback.settings);
     return;
   }
@@ -620,6 +626,7 @@ function executeProviderFetch(lat, lon, units, settings) {
     };
     provider = weatherAutoFallback.providers[0];
   } else weatherAutoFallback = null;
+  armWeatherWatchdog(provider === 'nws' ? 65000 : 35000);
   fetchNamedProvider(provider, lat, lon, units, settings);
 }
 
@@ -635,7 +642,7 @@ function getWeather() {
   weatherInFlight = true;
   weatherGeneration++;
   var requestGeneration = weatherGeneration;
-  weatherWatchdog = setTimeout(function() { if (activeWeatherGeneration(requestGeneration)) weatherFinished(false, 'request watchdog timeout'); }, 35000);
+  armWeatherWatchdog(25000); // Location resolution has its own deadline.
 
   if (settingEnabled(settings.USE_GPS, true)) {
     navigator.geolocation.getCurrentPosition(
