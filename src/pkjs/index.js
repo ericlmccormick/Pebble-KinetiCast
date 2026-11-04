@@ -202,7 +202,7 @@ function sendWeatherData(dict) {
   });
 }
 function weatherXHR() {
-  var xhr = weatherXHR();
+  var xhr = new XMLHttpRequest();
   xhr.timeout = 15000;
   xhr.onerror = function() { weatherFinished(false, 'network error'); };
   xhr.ontimeout = function() { weatherFinished(false, 'network timeout'); };
