@@ -253,12 +253,15 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_antialiased(ctx, true); 
   graphics_context_set_text_color(ctx, is_dark_theme() ? GColorWhite : GColorBlack); 
   
-  snprintf(s_lo_buf, sizeof(s_lo_buf), "%d", s_lo); 
-  snprintf(s_hi_buf, sizeof(s_hi_buf), "%d", s_hi); 
+  if (s_has_weather) snprintf(s_lo_buf, sizeof(s_lo_buf), "%d", s_lo);
+  else snprintf(s_lo_buf, sizeof(s_lo_buf), "--"); 
+  if (s_has_weather) snprintf(s_hi_buf, sizeof(s_hi_buf), "%d", s_hi);
+  else snprintf(s_hi_buf, sizeof(s_hi_buf), "--"); 
   graphics_draw_text(ctx, s_lo_buf, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(15, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
   graphics_draw_text(ctx, s_hi_buf, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 50, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
   
-  snprintf(s_cur_buf, sizeof(s_cur_buf), "%d", s_cur); 
+  if (s_has_weather) snprintf(s_cur_buf, sizeof(s_cur_buf), "%d", s_cur);
+  else snprintf(s_cur_buf, sizeof(s_cur_buf), "--"); 
   graphics_draw_text(ctx, s_cur_buf, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD), GRect(0, 15, bounds.size.w, 35), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL); 
   
   GRect arc_bounds = grect_inset(bounds, GEdgeInsets(14, 14, 28, 14)); 
@@ -266,7 +269,7 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_stroke_color(ctx, is_dark_theme() ? GColorDarkGray : GColorLightGray); 
   graphics_draw_arc(ctx, arc_bounds, GOvalScaleModeFitCircle, DEG_TO_TRIGANGLE(260), DEG_TO_TRIGANGLE(460));
   
-  if (s_connected) { 
+  if (s_has_weather) {
     int range = s_hi - s_lo; 
     float percent = 0.5f; 
     if (range > 0) percent = (float)(s_cur - s_lo) / (float)range; 
@@ -291,7 +294,11 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
       else uv_color = GColorPurple; 
     }
     graphics_context_set_fill_color(ctx, uv_color); 
-    graphics_fill_circle(ctx, dot, 5); 
+    graphics_fill_circle(ctx, dot, 5);
+  }
+  time_t now = time(NULL);
+  if (!s_connected || !s_has_weather || (s_last_weather_success > 0 && now - s_last_weather_success > (s_update_freq * 120))) {
+    graphics_draw_text(ctx, "!", fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 16, 0, 16, 22), GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
   }
 }
 
@@ -474,7 +481,8 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   text_layer_set_text(s_f_day3_layer, d3_txt); 
   text_layer_set_text(s_f_temp3_layer, t3_txt); 
 
-  request_weather(); // Throttled according to UPDATE_FREQ and the last valid update. 
+  request_weather(); // Throttled according to UPDATE_FREQ and the last valid update.
+  if (tick_time->tm_min % 5 == 0) layer_mark_dirty(s_weather_arc_layer); 
 
   #if defined(PBL_HEALTH)
   if (tick_time->tm_hour == 0 && tick_time->tm_min == 0) { 
