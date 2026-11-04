@@ -297,7 +297,7 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
   graphics_draw_text(ctx, s_lo_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(15, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
   graphics_draw_text(ctx, s_hi_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 50, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
   
-  if (s_has_weather) snprintf(s_cur_buf, sizeof(s_cur_buf), "%d%s", s_cur, s_temp_unit == 0 ? "F" : (s_temp_unit == 1 ? "C" : (s_temp_unit == 2 ? "K" : "R")));
+  if (s_has_weather) snprintf(s_cur_buf, sizeof(s_cur_buf), "%d", s_cur);
   else snprintf(s_cur_buf, sizeof(s_cur_buf), "--"); 
   graphics_draw_text(ctx, s_cur_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_28_BOLD), GRect(0, 15, bounds.size.w, 35), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL); 
   
@@ -556,7 +556,7 @@ static void update_health() {
   
   int dist_m = (int)health_service_sum_today(HealthMetricWalkedDistanceMeters);
   int dist_100th = s_use_metric ? (dist_m * 100) / 1000 : (dist_m * 100) / 1609;
-  snprintf(s_dist_buf, sizeof(s_dist_buf), "%d.%01d%s", dist_100th / 100, (dist_100th % 100) / 10, s_use_metric ? "km" : "mi");
+  snprintf(s_dist_buf, sizeof(s_dist_buf), "%d.%01d", dist_100th / 100, (dist_100th % 100) / 10);
   text_layer_set_text(s_dist_layer, s_dist_buf); 
   layer_mark_dirty(s_goals_canvas); 
   #endif
@@ -620,7 +620,7 @@ static void main_window_load(Window *window) {
   layer_add_child(s_health_container, s_goals_canvas); 
 
   s_dist_layer = text_layer_create(GRect(12, 34, 76, 35)); 
-  text_layer_set_font(s_dist_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD)); 
+  text_layer_set_font(s_dist_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD)); 
   text_layer_set_text_alignment(s_dist_layer, GTextAlignmentCenter); 
   text_layer_set_background_color(s_dist_layer, GColorClear); 
   layer_add_child(s_health_container, text_layer_get_layer(s_dist_layer)); 
