@@ -344,6 +344,43 @@ function fetchOpenMeteo(lat, lon, units, settings) {
 // ------------------------------------------------------------------------------
 // MET.NO / YR.NO ENGINE (KEYLESS GLOBAL)
 // ------------------------------------------------------------------------------
+
+function locationDateParts(dateValue, timeZone) {
+  var instant = new Date(dateValue);
+  if (!isFinite(instant.getTime())) throw new Error('Invalid forecast timestamp');
+  if (timeZone && typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+    try {
+      var formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timeZone, year: 'numeric', month: '2-digit',
+        day: '2-digit', hour: '2-digit', hourCycle: 'h23'
+      });
+      if (formatter.formatToParts) {
+        var fields = {};
+        formatter.formatToParts(instant).forEach(function(p) { fields[p.type] = p.value; });
+        return {day: fields.year + '-' + fields.month + '-' + fields.day, hour: parseInt(fields.hour, 10)};
+      }
+    } catch (err) { console.log('KinetiCast: unavailable location timezone: ' + err.message); }
+  }
+  // Phone local timezone is appropriate for GPS when platform Intl is unavailable.
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  return {day: instant.getFullYear() + '-' + pad(instant.getMonth()+1) + '-' + pad(instant.getDate()),
+    hour: instant.getHours()};
+}
+function completeDayArray(map, today) {
+  var result = [], current = today;
+  // Require four consecutive local dates; do not shift a three-day forecast.
+  for (var i = 0; i < 4; i++) {
+    var day = map[current];
+    if (!day || !isFinite(day.max) || !isFinite(day.min) || day.max < day.min ||
+        day.max <= -999 || day.min >= 999) throw new Error('Incomplete local-day forecast ' + current);
+    result.push(day);
+    var d = new Date(current + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 1);
+    current = d.toISOString().slice(0, 10);
+  }
+  return result;
+}
+
 function fetchMetNo(lat, lon, units, settings) {
   var isMetric = 1; // Celsius for shared conversion.
   var url = 'https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=' + lat.toFixed(4) + '&lon=' + lon.toFixed(4);
@@ -370,22 +407,23 @@ function fetchMetNo(lat, lon, units, settings) {
       
       for (var i = 0; i < timeseries.length; i++) {
         var t = timeseries[i];
-        var dateStr = t.time.substring(0, 10);
+        var local = locationDateParts(t.time, settings._LOCATION_TIMEZONE);
+        var dateStr = local.day;
         var temp = t.data.instant.details.air_temperature;
+        if (typeof temp !== 'number' || !isFinite(temp)) continue;
         
         if (!dailyData[dateStr]) { dailyData[dateStr] = { max: -999, min: 999, icon: null }; }
         if (temp > dailyData[dateStr].max) dailyData[dateStr].max = temp;
         if (temp < dailyData[dateStr].min) dailyData[dateStr].min = temp;
         
-        if (t.time.includes('12:00:00') && t.data.next_6_hours) {
+        if (local.hour >= 11 && local.hour <= 14 && t.data.next_6_hours && t.data.next_6_hours.summary) {
           dailyData[dateStr].icon = metNoIconToOWM(t.data.next_6_hours.summary.symbol_code);
         }
       }
       
-      var days = Object.keys(dailyData).sort();
-      for (var d = 0; d < days.length; d++) {
-        if (!dailyData[days[d]].icon) dailyData[days[d]].icon = conditions;
-      }
+      var todayKey = locationDateParts(Date.now(), settings._LOCATION_TIMEZONE).day;
+      var days = completeDayArray(dailyData, todayKey);
+      days.forEach(function(day) { if (!day.icon) day.icon = conditions; });
       
       function formatTemp(tempC) {
         return isMetric ? tempC : ((tempC * 9/5) + 32);
@@ -394,8 +432,8 @@ function fetchMetNo(lat, lon, units, settings) {
       var dict = {
         'TEMP_CURRENT': formatTemp(currentTempC),
         'CONDITIONS': conditions,
-        'TEMP_HIGH': formatTemp(dailyData[days[0]].max),
-        'TEMP_LOW': formatTemp(dailyData[days[0]].min),
+        'TEMP_HIGH': formatTemp(days[0].max),
+        'TEMP_LOW': formatTemp(days[0].min),
         'UNITS': isMetric,
         'IS_NIGHT': isNight,
         'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ) || 30,
@@ -403,15 +441,15 @@ function fetchMetNo(lat, lon, units, settings) {
         'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
-        'DAY1_HIGH': formatTemp(dailyData[days[1]].max),
-        'DAY1_LOW': formatTemp(dailyData[days[1]].min),
-        'DAY1_ICON': dailyData[days[1]].icon,
-        'DAY2_HIGH': formatTemp(dailyData[days[2]].max),
-        'DAY2_LOW': formatTemp(dailyData[days[2]].min),
-        'DAY2_ICON': dailyData[days[2]].icon,
-        'DAY3_HIGH': formatTemp(dailyData[days[3]].max),
-        'DAY3_LOW': formatTemp(dailyData[days[3]].min),
-        'DAY3_ICON': dailyData[days[3]].icon
+        'DAY1_HIGH': formatTemp(days[1].max),
+        'DAY1_LOW': formatTemp(days[1].min),
+        'DAY1_ICON': days[1].icon,
+        'DAY2_HIGH': formatTemp(days[2].max),
+        'DAY2_LOW': formatTemp(days[2].min),
+        'DAY2_ICON': days[2].icon,
+        'DAY3_HIGH': formatTemp(days[3].max),
+        'DAY3_LOW': formatTemp(days[3].min),
+        'DAY3_ICON': days[3].icon
       };
       
       sendWeatherData(dict);
@@ -625,6 +663,7 @@ function getWeather() {
         if (this.status === 200) {
           var json = JSON.parse(this.responseText);
           if (json.results && json.results.length > 0) {
+            settings._LOCATION_TIMEZONE = json.results[0].timezone || null;
             executeProviderFetch(json.results[0].latitude, json.results[0].longitude, units, settings);
           } else weatherFinished(false, 'manual location not found');
         }
