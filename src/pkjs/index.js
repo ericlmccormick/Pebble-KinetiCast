@@ -173,6 +173,22 @@ var weatherFailures = 0;
 var lastWeatherSuccess = 0;
 var lastWeatherAttempt = 0;
 var weatherAutoFallback = null;
+var weatherGeneration = 0;
+var weatherRequests = [];
+function armWeatherWatchdog(ms) {
+  if (weatherWatchdog) clearTimeout(weatherWatchdog);
+  var generation = weatherGeneration;
+  weatherWatchdog = setTimeout(function() {
+    if (activeWeatherGeneration(generation)) weatherFinished(false, 'request timeout');
+  }, ms);
+}
+
+function cancelWeatherRequests() {
+  var old = weatherRequests;
+  weatherRequests = [];
+  old.forEach(function(xhr) { try { xhr.abort(); } catch (ignore) {} });
+}
+function activeWeatherGeneration(gen) { return weatherInFlight && gen === weatherGeneration; }
 
 
 function desiredTempUnit(settings) {
@@ -205,11 +221,14 @@ function weatherIntervalMs(settings) {
 function weatherFinished(ok, detail) {
   if (!weatherInFlight) return;
   if (weatherWatchdog) { clearTimeout(weatherWatchdog); weatherWatchdog = null; }
+  cancelWeatherRequests();
+  // Invalidate all callbacks from the provider that just finished.
+  weatherGeneration++;
   if (!ok && weatherAutoFallback && weatherAutoFallback.index + 1 < weatherAutoFallback.providers.length) {
     weatherAutoFallback.index++;
     var next = weatherAutoFallback.providers[weatherAutoFallback.index];
     console.log('KinetiCast: ' + detail + '; falling back to ' + next);
-    weatherWatchdog = setTimeout(function() { weatherFinished(false, 'fallback timeout'); }, 35000);
+    armWeatherWatchdog(next === 'nws' ? 65000 : 35000);
     fetchNamedProvider(next, weatherAutoFallback.lat, weatherAutoFallback.lon, 'metric', weatherAutoFallback.settings);
     return;
   }
@@ -233,12 +252,23 @@ function weatherFinished(ok, detail) {
 function sendWeatherData(dict) {
   // Provider engines deliver Celsius. Convert exactly once, independently of distance.
   var settings = readSettings();
+  var gen = weatherGeneration;
   var unit = desiredTempUnit(settings);
   var distance = desiredDistanceUnit(settings);
-  ['TEMP_CURRENT','TEMP_HIGH','TEMP_LOW','DAY1_HIGH','DAY1_LOW',
-   'DAY2_HIGH','DAY2_LOW','DAY3_HIGH','DAY3_LOW'].forEach(function(key) {
-     if (dict[key] !== undefined && dict[key] !== null) dict[key] = convertCelsius(dict[key], unit);
-   });
+  var temperatureKeys = ['TEMP_CURRENT','TEMP_HIGH','TEMP_LOW','DAY1_HIGH','DAY1_LOW',
+    'DAY2_HIGH','DAY2_LOW','DAY3_HIGH','DAY3_LOW'];
+  // Reject missing, null, string and nonfinite readings BEFORE converting;
+  // Number(null) and Number(undefined) must not become fictitious temperatures.
+  for (var i = 0; i < temperatureKeys.length; i++) {
+    var value = dict[temperatureKeys[i]];
+    if (typeof value !== 'number' || !isFinite(value) || value < -120 || value > 75) {
+      weatherFinished(false, 'incomplete or invalid Celsius forecast'); return;
+    }
+  }
+  for (var j = 0; j < temperatureKeys.length; j++) {
+    var key = temperatureKeys[j];
+    dict[key] = convertCelsius(dict[key], unit);
+  }
   dict.UNITS = distance === 'km' ? 1 : 0;
   dict.DISTANCE_UNIT = dict.UNITS;
   dict.TEMP_UNIT = temperatureUnitId(unit);
@@ -249,14 +279,15 @@ function sendWeatherData(dict) {
     weatherFinished(false, 'invalid provider temperature'); return;
   }
   Pebble.sendAppMessage(dict, function() {
-    weatherFinished(true);
+    if (activeWeatherGeneration(gen)) weatherFinished(true);
   }, function() {
-    weatherFinished(false, 'AppMessage delivery failed');
+    if (activeWeatherGeneration(gen)) weatherFinished(false, 'AppMessage delivery failed');
   });
 }
 function guardWeatherLoad(xhr) {
   var handler = xhr.onload;
   xhr.onload = function() {
+    if (!activeWeatherGeneration(xhr._weatherGeneration)) return;
     if (xhr.status < 200 || xhr.status >= 300) {
       weatherFinished(false, 'HTTP ' + xhr.status); return;
     }
@@ -267,9 +298,11 @@ function guardWeatherLoad(xhr) {
 
 function weatherXHR() {
   var xhr = new XMLHttpRequest();
+  xhr._weatherGeneration = weatherGeneration;
+  weatherRequests.push(xhr);
   xhr.timeout = 15000;
-  xhr.onerror = function() { weatherFinished(false, 'network error'); };
-  xhr.ontimeout = function() { weatherFinished(false, 'network timeout'); };
+  xhr.onerror = function() { if (activeWeatherGeneration(xhr._weatherGeneration)) weatherFinished(false, 'network error'); };
+  xhr.ontimeout = function() { if (activeWeatherGeneration(xhr._weatherGeneration)) weatherFinished(false, 'network timeout'); };
   return xhr;
 }
 
@@ -317,6 +350,43 @@ function fetchOpenMeteo(lat, lon, units, settings) {
 // ------------------------------------------------------------------------------
 // MET.NO / YR.NO ENGINE (KEYLESS GLOBAL)
 // ------------------------------------------------------------------------------
+
+function locationDateParts(dateValue, timeZone) {
+  var instant = new Date(dateValue);
+  if (!isFinite(instant.getTime())) throw new Error('Invalid forecast timestamp');
+  if (timeZone && typeof Intl !== 'undefined' && Intl.DateTimeFormat) {
+    try {
+      var formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timeZone, year: 'numeric', month: '2-digit',
+        day: '2-digit', hour: '2-digit', hourCycle: 'h23'
+      });
+      if (formatter.formatToParts) {
+        var fields = {};
+        formatter.formatToParts(instant).forEach(function(p) { fields[p.type] = p.value; });
+        return {day: fields.year + '-' + fields.month + '-' + fields.day, hour: parseInt(fields.hour, 10)};
+      }
+    } catch (err) { console.log('KinetiCast: unavailable location timezone: ' + err.message); }
+  }
+  // Phone local timezone is appropriate for GPS when platform Intl is unavailable.
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  return {day: instant.getFullYear() + '-' + pad(instant.getMonth()+1) + '-' + pad(instant.getDate()),
+    hour: instant.getHours()};
+}
+function completeDayArray(map, today) {
+  var result = [], current = today;
+  // Require four consecutive local dates; do not shift a three-day forecast.
+  for (var i = 0; i < 4; i++) {
+    var day = map[current];
+    if (!day || !isFinite(day.max) || !isFinite(day.min) || day.max < day.min ||
+        day.max <= -999 || day.min >= 999) throw new Error('Incomplete local-day forecast ' + current);
+    result.push(day);
+    var d = new Date(current + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + 1);
+    current = d.toISOString().slice(0, 10);
+  }
+  return result;
+}
+
 function fetchMetNo(lat, lon, units, settings) {
   var isMetric = 1; // Celsius for shared conversion.
   var url = 'https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=' + lat.toFixed(4) + '&lon=' + lon.toFixed(4);
@@ -328,7 +398,7 @@ function fetchMetNo(lat, lon, units, settings) {
     if (this.status === 200) {
       var json = JSON.parse(this.responseText);
       var timeseries = json.properties.timeseries;
-      if (!timeseries || timeseries.length === 0) return;
+      if (!timeseries || timeseries.length === 0) { weatherFinished(false, 'Met.no returned no forecast'); return; }
       
       var current = timeseries[0];
       var currentTempC = current.data.instant.details.air_temperature;
@@ -343,22 +413,23 @@ function fetchMetNo(lat, lon, units, settings) {
       
       for (var i = 0; i < timeseries.length; i++) {
         var t = timeseries[i];
-        var dateStr = t.time.substring(0, 10);
+        var local = locationDateParts(t.time, settings._LOCATION_TIMEZONE);
+        var dateStr = local.day;
         var temp = t.data.instant.details.air_temperature;
+        if (typeof temp !== 'number' || !isFinite(temp)) continue;
         
         if (!dailyData[dateStr]) { dailyData[dateStr] = { max: -999, min: 999, icon: null }; }
         if (temp > dailyData[dateStr].max) dailyData[dateStr].max = temp;
         if (temp < dailyData[dateStr].min) dailyData[dateStr].min = temp;
         
-        if (t.time.includes('12:00:00') && t.data.next_6_hours) {
+        if (local.hour >= 11 && local.hour <= 14 && t.data.next_6_hours && t.data.next_6_hours.summary) {
           dailyData[dateStr].icon = metNoIconToOWM(t.data.next_6_hours.summary.symbol_code);
         }
       }
       
-      var days = Object.keys(dailyData).sort();
-      for (var d = 0; d < days.length; d++) {
-        if (!dailyData[days[d]].icon) dailyData[days[d]].icon = conditions;
-      }
+      var todayKey = locationDateParts(Date.now(), settings._LOCATION_TIMEZONE).day;
+      var days = completeDayArray(dailyData, todayKey);
+      days.forEach(function(day) { if (!day.icon) day.icon = conditions; });
       
       function formatTemp(tempC) {
         return isMetric ? tempC : ((tempC * 9/5) + 32);
@@ -367,8 +438,8 @@ function fetchMetNo(lat, lon, units, settings) {
       var dict = {
         'TEMP_CURRENT': formatTemp(currentTempC),
         'CONDITIONS': conditions,
-        'TEMP_HIGH': formatTemp(dailyData[days[0]].max),
-        'TEMP_LOW': formatTemp(dailyData[days[0]].min),
+        'TEMP_HIGH': formatTemp(days[0].max),
+        'TEMP_LOW': formatTemp(days[0].min),
         'UNITS': isMetric,
         'IS_NIGHT': isNight,
         'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ) || 30,
@@ -376,15 +447,15 @@ function fetchMetNo(lat, lon, units, settings) {
         'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
-        'DAY1_HIGH': formatTemp(dailyData[days[1]].max),
-        'DAY1_LOW': formatTemp(dailyData[days[1]].min),
-        'DAY1_ICON': dailyData[days[1]].icon,
-        'DAY2_HIGH': formatTemp(dailyData[days[2]].max),
-        'DAY2_LOW': formatTemp(dailyData[days[2]].min),
-        'DAY2_ICON': dailyData[days[2]].icon,
-        'DAY3_HIGH': formatTemp(dailyData[days[3]].max),
-        'DAY3_LOW': formatTemp(dailyData[days[3]].min),
-        'DAY3_ICON': dailyData[days[3]].icon
+        'DAY1_HIGH': formatTemp(days[1].max),
+        'DAY1_LOW': formatTemp(days[1].min),
+        'DAY1_ICON': days[1].icon,
+        'DAY2_HIGH': formatTemp(days[2].max),
+        'DAY2_LOW': formatTemp(days[2].min),
+        'DAY2_ICON': days[2].icon,
+        'DAY3_HIGH': formatTemp(days[3].max),
+        'DAY3_LOW': formatTemp(days[3].min),
+        'DAY3_ICON': days[3].icon
       };
       
       sendWeatherData(dict);
@@ -398,91 +469,93 @@ function fetchMetNo(lat, lon, units, settings) {
 // NATIONAL WEATHER SERVICE ENGINE (KEYLESS US ONLY)
 // ------------------------------------------------------------------------------
 function fetchNWS(lat, lon, units, settings) {
-  var isMetric = 1; // Celsius for shared conversion.
-  var pointUrl = 'https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4);
-  
-  var xhr1 = weatherXHR();
-  xhr1.open('GET', pointUrl);
-  xhr1.setRequestHeader('User-Agent', 'KinetiCast/2.2 (https://github.com/ericlmccormick/Pebble_Health_and_Weather)');
-  xhr1.onload = function() {
-    if (this.status === 200) {
-      var json1 = JSON.parse(this.responseText);
-      var forecastUrl = json1.properties.forecast;
-      
-      var xhr2 = weatherXHR();
-      xhr2.open('GET', forecastUrl);
-      xhr2.setRequestHeader('User-Agent', 'KinetiCast/2.2 (https://github.com/ericlmccormick/Pebble_Health_and_Weather)');
-      xhr2.onload = function() {
-        if (this.status === 200) {
-          var json2 = JSON.parse(this.responseText);
-          var periods = json2.properties.periods;
-          if (!periods || periods.length === 0) return;
-          
-          function convertTemp(t, unit) {
-            if (isMetric) { return unit === 'F' ? (t - 32) * 5 / 9 : t; } 
-            else { return unit === 'C' ? Math.round((t * 9 / 5) + 32) : Math.round(t); }
+  var base = 'https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4);
+  var agent = {'User-Agent': 'KinetiCast/2.2 (https://github.com/ericlmccormick/Pebble_Health_and_Weather)'};
+  function jsonRequest(url, callback) {
+    var xhr = weatherXHR();
+    xhr.open('GET', url);
+    try { xhr.setRequestHeader('User-Agent', agent['User-Agent']); } catch (ignore) {}
+    xhr.onload = function() {
+      var value = JSON.parse(this.responseText);
+      callback(value);
+    };
+    guardWeatherLoad(xhr);
+    xhr.send();
+  }
+  jsonRequest(base, function(point) {
+    var properties = point.properties || {};
+    var hourlyURL = properties.forecastHourly;
+    var stationsURL = properties.observationStations;
+    if (!hourlyURL || !stationsURL) {
+      weatherFinished(false, 'NWS hourly forecast or observations unavailable');
+      return;
+    }
+    jsonRequest(hourlyURL, function(forecast) {
+      var periods = forecast.properties && forecast.properties.periods;
+      if (!periods || !periods.length) {
+        weatherFinished(false, 'NWS hourly forecast empty');
+        return;
+      }
+      var forecastDays = {};
+      var tz = properties.timeZone || settings._LOCATION_TIMEZONE;
+      var localToday = locationDateParts(Date.now(), tz).day;
+      for (var i = 0; i < periods.length; i++) {
+        var p = periods[i];
+        if (!p || !p.startTime || typeof p.temperature !== 'number') continue;
+        var day = locationDateParts(p.startTime, tz);
+        var c = p.temperatureUnit === 'F' ? (p.temperature - 32) * 5 / 9 : p.temperature;
+        if (!isFinite(c)) continue;
+        if (!forecastDays[day.day]) forecastDays[day.day] = {max:-999,min:999,icon:null};
+        var d = forecastDays[day.day];
+        d.max = Math.max(d.max, c);
+        d.min = Math.min(d.min, c);
+        // Prefer an afternoon symbol for each day's forecast icon.
+        if (!d.icon || (day.hour >= 11 && day.hour <= 14)) {
+          d.icon = nwsForecastToOWM(p.shortForecast || '', p.isDaytime !== false);
+        }
+      }
+      var days;
+      try { days = completeDayArray(forecastDays, localToday); }
+      catch (error) { weatherFinished(false, error.message); return; }
+      var first = periods[0];
+      jsonRequest(stationsURL, function(stations) {
+        var station = stations.observationStations && stations.observationStations[0];
+        if (!station && stations.features && stations.features.length) {
+          station = stations.features[0].id ||
+            (stations.features[0].properties && stations.features[0].properties['@id']);
+        }
+        if (!station || station.indexOf('https://') !== 0) {
+          weatherFinished(false, 'NWS observation station missing');
+          return;
+        }
+        jsonRequest(station.replace(/\/$/, '') + '/observations/latest', function(observation) {
+          var observed = observation.properties && observation.properties.temperature &&
+            observation.properties.temperature.value;
+          if (typeof observed !== 'number' || !isFinite(observed)) {
+            weatherFinished(false, 'NWS latest observation has no temperature');
+            return;
           }
-          
-          var p0 = periods[0];
-          var currentTemp = convertTemp(p0.temperature, p0.temperatureUnit);
-          var conditions = nwsForecastToOWM(p0.shortForecast, p0.isDaytime);
-          var isNight = p0.isDaytime ? 0 : 1;
-          
-          var days = [];
-          var currentDay = {};
-          
-          for (var i = 0; i < periods.length; i++) {
-            var p = periods[i];
-            if (p.isDaytime) {
-              if (currentDay.high !== undefined) {
-                days.push(currentDay);
-                currentDay = {};
-              }
-              currentDay.high = p.temperature;
-              currentDay.unit = p.temperatureUnit;
-              currentDay.icon = nwsForecastToOWM(p.shortForecast, true);
-            } else {
-              currentDay.low = p.temperature;
-              currentDay.unit = p.temperatureUnit;
-              if (currentDay.high === undefined) {
-                currentDay.high = p.temperature;
-                currentDay.icon = nwsForecastToOWM(p.shortForecast, false);
-              }
-            }
-          }
-          days.push(currentDay);
-          
+          // Observation is Celsius, unlike NWS forecastHourly's often-Fahrenheit readings.
           var dict = {
-            'TEMP_CURRENT': currentTemp,
-            'CONDITIONS': conditions,
-            'TEMP_HIGH': convertTemp(days[0].high, days[0].unit),
-            'TEMP_LOW': convertTemp(days[0].low !== undefined ? days[0].low : days[0].high, days[0].unit),
-            'UNITS': isMetric,
-            'IS_NIGHT': isNight,
-            'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ) || 30,
+            'TEMP_CURRENT': observed,
+            'CONDITIONS': nwsForecastToOWM(first.shortForecast || '', first.isDaytime !== false),
+            'TEMP_HIGH': days[0].max, 'TEMP_LOW': days[0].min,
+            'UNITS': 1,
+            'IS_NIGHT': first.isDaytime === false ? 1 : 0,
+            'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ, 10) || 30,
             'UV_INDEX': 0,
             'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
-            'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
-            'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
-            'DAY1_HIGH': convertTemp(days[1].high, days[1].unit),
-            'DAY1_LOW': convertTemp(days[1].low, days[1].unit),
-            'DAY1_ICON': days[1].icon,
-            'DAY2_HIGH': convertTemp(days[2].high, days[2].unit),
-            'DAY2_LOW': convertTemp(days[2].low, days[2].unit),
-            'DAY2_ICON': days[2].icon,
-            'DAY3_HIGH': convertTemp(days[3].high, days[3].unit),
-            'DAY3_LOW': convertTemp(days[3].low, days[3].unit),
-            'DAY3_ICON': days[3].icon
+            'THEME_MODE': parseInt(settings.THEME_MODE, 10) || 0,
+            'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW, 10) || 0,
+            'DAY1_HIGH': days[1].max, 'DAY1_LOW': days[1].min, 'DAY1_ICON': days[1].icon,
+            'DAY2_HIGH': days[2].max, 'DAY2_LOW': days[2].min, 'DAY2_ICON': days[2].icon,
+            'DAY3_HIGH': days[3].max, 'DAY3_LOW': days[3].min, 'DAY3_ICON': days[3].icon
           };
           sendWeatherData(dict);
-        }
-      };
-      guardWeatherLoad(xhr2);
-  xhr2.send();
-    }
-  };
-  guardWeatherLoad(xhr1);
-  xhr1.send();
+        });
+      });
+    });
+  });
 }
 
 // ------------------------------------------------------------------------------
@@ -553,6 +626,7 @@ function executeProviderFetch(lat, lon, units, settings) {
     };
     provider = weatherAutoFallback.providers[0];
   } else weatherAutoFallback = null;
+  armWeatherWatchdog(provider === 'nws' ? 65000 : 35000);
   fetchNamedProvider(provider, lat, lon, units, settings);
 }
 
@@ -566,12 +640,14 @@ function getWeather() {
   if (now - lastWeatherAttempt < 5000) return;
   lastWeatherAttempt = now;
   weatherInFlight = true;
-  weatherWatchdog = setTimeout(function() { weatherFinished(false, 'request watchdog timeout'); }, 35000);
+  weatherGeneration++;
+  var requestGeneration = weatherGeneration;
+  armWeatherWatchdog(25000); // Location resolution has its own deadline.
 
   if (settingEnabled(settings.USE_GPS, true)) {
     navigator.geolocation.getCurrentPosition(
-      function(pos) { executeProviderFetch(pos.coords.latitude, pos.coords.longitude, units, settings); }, 
-      function(err) { weatherFinished(false, 'GPS unavailable: ' + (err && err.message || 'unknown')); }, 
+      function(pos) { if (activeWeatherGeneration(requestGeneration)) executeProviderFetch(pos.coords.latitude, pos.coords.longitude, units, settings); }, 
+      function(err) { if (activeWeatherGeneration(requestGeneration)) weatherFinished(false, 'GPS unavailable: ' + (err && err.message || 'unknown')); }, 
       {timeout: 15000, maximumAge: 60000}
     );
   } else if (settings.MANUAL_LOCATION) {
@@ -596,8 +672,9 @@ function getWeather() {
         if (this.status === 200) {
           var json = JSON.parse(this.responseText);
           if (json.results && json.results.length > 0) {
+            settings._LOCATION_TIMEZONE = json.results[0].timezone || null;
             executeProviderFetch(json.results[0].latitude, json.results[0].longitude, units, settings);
-          }
+          } else weatherFinished(false, 'manual location not found');
         }
       };
       xhrOM.open('GET', geoUrl);

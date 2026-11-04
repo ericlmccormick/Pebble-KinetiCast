@@ -23,6 +23,7 @@ jobs:
           node tests/weather-xhr.test.js
           node tests/weather-units.test.js
           node tests/weather-providers.test.js
+          node tests/weather-release.test.js
           node -e "const p=require('./package.json');if(p.pebble.sdkVersion!=='3'||!p.pebble.targetPlatforms.includes('emery'))process.exit(1)"
       # Keep the application SDK at or below firmware deployed to Pebble Time 2.
       # Installing 'latest' can produce a PBW that refuses to load on 4.44.x firmware.
