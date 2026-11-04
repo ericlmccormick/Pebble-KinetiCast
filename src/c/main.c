@@ -664,9 +664,10 @@ static void main_window_load(Window *window) {
   text_layer_set_font(s_f_day1_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD)); 
   text_layer_set_font(s_f_day2_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD)); 
   text_layer_set_font(s_f_day3_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD)); 
-  text_layer_set_font(s_f_temp1_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD)); 
-  text_layer_set_font(s_f_temp2_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD)); 
-  text_layer_set_font(s_f_temp3_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD)); 
+  const char *forecast_font = s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD;
+  text_layer_set_font(s_f_temp1_layer, fonts_get_system_font(forecast_font));
+  text_layer_set_font(s_f_temp2_layer, fonts_get_system_font(forecast_font));
+  text_layer_set_font(s_f_temp3_layer, fonts_get_system_font(forecast_font)); 
   
   text_layer_set_background_color(s_f_day1_layer, GColorClear); 
   text_layer_set_background_color(s_f_day2_layer, GColorClear); 
@@ -779,7 +780,14 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     else if(t->key == MESSAGE_KEY_CONDITIONS && t->type == TUPLE_CSTRING) { if(strcmp(s_icon_code, t->value->cstring)) set_weather_icon(t->value->cstring); }
     else if(t->key == MESSAGE_KEY_UPDATE_FREQ) s_update_freq = get_int(t);
     else if(t->key == MESSAGE_KEY_UNITS || t->key == MESSAGE_KEY_DISTANCE_UNIT) { s_use_metric = (get_int(t) == 1); update_health(); }
-    else if(t->key == MESSAGE_KEY_TEMP_UNIT) { int unit = get_int(t); s_temp_unit = (unit >= 0 && unit <= 3) ? unit : 0; }
+    else if(t->key == MESSAGE_KEY_TEMP_UNIT) {
+      int unit = get_int(t);
+      s_temp_unit = (unit >= 0 && unit <= 3) ? unit : 0;
+      const char *font = s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD;
+      text_layer_set_font(s_f_temp1_layer, fonts_get_system_font(font));
+      text_layer_set_font(s_f_temp2_layer, fonts_get_system_font(font));
+      text_layer_set_font(s_f_temp3_layer, fonts_get_system_font(font));
+    }
     else if(t->key == MESSAGE_KEY_UV_INDEX) s_uv = get_int(t);
     else if(t->key == MESSAGE_KEY_IS_NIGHT) {
       if (s_is_night != (get_int(t) == 1)) { s_is_night = (get_int(t) == 1); theme_changed = true; }
