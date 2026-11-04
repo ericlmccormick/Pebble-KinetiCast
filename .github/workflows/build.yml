@@ -29,8 +29,8 @@ jobs:
       - name: Install Pebble CLI and firmware-compatible SDK
         run: |
           uv tool install pebble-tool
-          pebble sdk install 4.40.0
-          pebble sdk activate 4.40.0
+          pebble sdk install 4.44
+          pebble sdk activate 4.44
           pebble sdk list
       - name: Build for Emery
         run: pebble build
