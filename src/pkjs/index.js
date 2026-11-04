@@ -129,6 +129,56 @@ function nwsForecastToOWM(forecastStr, isDay) {
 // ------------------------------------------------------------------------------
 // OPEN-METEO ENGINE (KEYLESS GLOBAL)
 // ------------------------------------------------------------------------------
+
+var weatherInFlight = false;
+var weatherWatchdog = null;
+var weatherRetryTimer = null;
+var weatherFailures = 0;
+var lastWeatherSuccess = 0;
+var lastWeatherAttempt = 0;
+
+function weatherIntervalMs(settings) {
+  var minutes = parseInt(settings.UPDATE_FREQ, 10);
+  if (!isFinite(minutes)) minutes = 30;
+  return Math.max(10, Math.min(120, minutes)) * 60000;
+}
+function weatherFinished(ok, detail) {
+  if (!weatherInFlight) return;
+  if (weatherWatchdog) { clearTimeout(weatherWatchdog); weatherWatchdog = null; }
+  weatherInFlight = false;
+  if (ok) {
+    weatherFailures = 0;
+    lastWeatherSuccess = Date.now();
+    if (weatherRetryTimer) { clearTimeout(weatherRetryTimer); weatherRetryTimer = null; }
+    return;
+  }
+  console.log('KinetiCast weather: ' + (detail || 'request failed'));
+  if (weatherFailures >= 3 || weatherRetryTimer) return;
+  weatherFailures++;
+  var delay = Math.min(120000, 15000 * Math.pow(2, weatherFailures - 1));
+  weatherRetryTimer = setTimeout(function() {
+    weatherRetryTimer = null;
+    getWeather(true);
+  }, delay);
+}
+function sendWeatherData(dict) {
+  if (!isFinite(dict.TEMP_CURRENT) || !isFinite(dict.TEMP_HIGH) || !isFinite(dict.TEMP_LOW)) {
+    weatherFinished(false, 'invalid provider temperature'); return;
+  }
+  Pebble.sendAppMessage(dict, function() {
+    weatherFinished(true);
+  }, function() {
+    weatherFinished(false, 'AppMessage delivery failed');
+  });
+}
+function weatherXHR() {
+  var xhr = weatherXHR();
+  xhr.timeout = 15000;
+  xhr.onerror = function() { weatherFinished(false, 'network error'); };
+  xhr.ontimeout = function() { weatherFinished(false, 'network timeout'); };
+  return xhr;
+}
+
 function fetchOpenMeteo(lat, lon, units, settings) {
   var isMetric = (units === 'metric') ? 1 : 0;
   var tempUnit = isMetric ? 'celsius' : 'fahrenheit';
@@ -136,7 +186,7 @@ function fetchOpenMeteo(lat, lon, units, settings) {
             '&current=temperature_2m,weather_code,uv_index,is_day&daily=temperature_2m_max,temperature_2m_min,weather_code' + 
             '&temperature_unit=' + tempUnit + '&timezone=auto';
 
-  var xhr = new XMLHttpRequest();
+  var xhr = weatherXHR();
   xhr.onload = function () {
     if (this.status === 200) { 
       var json = JSON.parse(this.responseText);
@@ -162,7 +212,7 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'DAY3_LOW': Math.round(json.daily.temperature_2m_min[3]),
         'DAY3_ICON': getWmoIcon(json.daily.weather_code[3], 1)
       };
-      Pebble.sendAppMessage(dict);
+      sendWeatherData(dict);
     }
   };
   xhr.open('GET', url);
@@ -176,7 +226,7 @@ function fetchMetNo(lat, lon, units, settings) {
   var isMetric = (units === 'metric') ? 1 : 0;
   var url = 'https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=' + lat.toFixed(4) + '&lon=' + lon.toFixed(4);
   
-  var xhr = new XMLHttpRequest();
+  var xhr = weatherXHR();
   xhr.open('GET', url);
   xhr.setRequestHeader('User-Agent', 'KinetiCastPebbleApp/2.2 (contact@example.com)');
   xhr.onload = function() {
@@ -242,7 +292,7 @@ function fetchMetNo(lat, lon, units, settings) {
         'DAY3_ICON': dailyData[days[3]].icon
       };
       
-      Pebble.sendAppMessage(dict);
+      sendWeatherData(dict);
     }
   };
   xhr.send();
@@ -255,7 +305,7 @@ function fetchNWS(lat, lon, units, settings) {
   var isMetric = (units === 'metric') ? 1 : 0;
   var pointUrl = 'https://api.weather.gov/points/' + lat.toFixed(4) + ',' + lon.toFixed(4);
   
-  var xhr1 = new XMLHttpRequest();
+  var xhr1 = weatherXHR();
   xhr1.open('GET', pointUrl);
   xhr1.setRequestHeader('User-Agent', 'KinetiCastPebbleApp/2.2 (contact@example.com)');
   xhr1.onload = function() {
@@ -263,7 +313,7 @@ function fetchNWS(lat, lon, units, settings) {
       var json1 = JSON.parse(this.responseText);
       var forecastUrl = json1.properties.forecast;
       
-      var xhr2 = new XMLHttpRequest();
+      var xhr2 = weatherXHR();
       xhr2.open('GET', forecastUrl);
       xhr2.setRequestHeader('User-Agent', 'KinetiCastPebbleApp/2.2 (contact@example.com)');
       xhr2.onload = function() {
@@ -328,7 +378,7 @@ function fetchNWS(lat, lon, units, settings) {
             'DAY3_LOW': convertTemp(days[3].low, days[3].unit),
             'DAY3_ICON': days[3].icon
           };
-          Pebble.sendAppMessage(dict);
+          sendWeatherData(dict);
         }
       };
       xhr2.send();
@@ -341,11 +391,11 @@ function fetchNWS(lat, lon, units, settings) {
 // OPENWEATHERMAP ENGINE (REQUIRES API KEY)
 // ------------------------------------------------------------------------------
 function fetchOpenWeather(lat, lon, units, settings) {
-  if (!settings.API_KEY) return;
+  if (!settings.API_KEY) { weatherFinished(false, 'OpenWeather API key missing'); return; }
   var isMetric = (units === 'metric') ? 1 : 0;
   var url = 'https://api.openweathermap.org/data/3.0/onecall?lat=' + lat + '&lon=' + lon + '&exclude=minutely,hourly,alerts&units=' + units + '&appid=' + settings.API_KEY;
 
-  var xhr = new XMLHttpRequest();
+  var xhr = weatherXHR();
   xhr.onload = function () {
     if (this.status === 200) { 
       var json = JSON.parse(this.responseText);
@@ -371,7 +421,7 @@ function fetchOpenWeather(lat, lon, units, settings) {
         'DAY3_LOW': Math.round(json.daily[3].temp.min),
         'DAY3_ICON': json.daily[3].weather[0].icon
       };
-      Pebble.sendAppMessage(dict);
+      sendWeatherData(dict);
     }
   };
   xhr.open('GET', url);
@@ -396,22 +446,29 @@ function executeProviderFetch(lat, lon, units, settings) {
 }
 
 function getWeather() {
-  var settings = JSON.parse(localStorage.getItem('clay-settings')) || {};
+  var settings = JSON.parse(localStorage.getItem('clay-settings') || '{}');
   var units = settings.UNITS || 'imperial';
   var provider = settings.WEATHER_PROVIDER || 'openmeteo';
+  var now = Date.now();
+  if (weatherInFlight) return;
+  if (arguments[0] !== true && lastWeatherSuccess && now - lastWeatherSuccess < weatherIntervalMs(settings)) return;
+  if (now - lastWeatherAttempt < 5000) return;
+  lastWeatherAttempt = now;
+  weatherInFlight = true;
+  weatherWatchdog = setTimeout(function() { weatherFinished(false, 'request watchdog timeout'); }, 35000);
 
   if (settings.USE_GPS !== false) {
     navigator.geolocation.getCurrentPosition(
       function(pos) { executeProviderFetch(pos.coords.latitude, pos.coords.longitude, units, settings); }, 
-      function(err) { console.log('GPS Error'); }, 
+      function(err) { weatherFinished(false, 'GPS unavailable: ' + (err && err.message || 'unknown')); }, 
       {timeout: 15000, maximumAge: 60000}
     );
   } else if (settings.MANUAL_LOCATION) {
     var geoUrl = '';
     if (provider === 'openweathermap') {
-      if (!settings.API_KEY) return;
+      if (!settings.API_KEY) { weatherFinished(false, 'geocoding requires API key'); return; }
       geoUrl = 'https://api.openweathermap.org/data/2.5/weather?q=' + encodeURIComponent(settings.MANUAL_LOCATION) + '&appid=' + settings.API_KEY;
-      var xhrOWM = new XMLHttpRequest();
+      var xhrOWM = weatherXHR();
       xhrOWM.onload = function() {
         if (this.status === 200) {
           var json = JSON.parse(this.responseText);
@@ -422,7 +479,7 @@ function getWeather() {
       xhrOWM.send();
     } else {
       geoUrl = 'https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(settings.MANUAL_LOCATION) + '&count=1&language=en&format=json';
-      var xhrOM = new XMLHttpRequest();
+      var xhrOM = weatherXHR();
       xhrOM.onload = function() {
         if (this.status === 200) {
           var json = JSON.parse(this.responseText);
@@ -434,6 +491,8 @@ function getWeather() {
       xhrOM.open('GET', geoUrl);
       xhrOM.send();
     }
+  } else {
+    weatherFinished(false, 'enable GPS or enter a manual location');
   }
 }
 
@@ -445,8 +504,8 @@ Pebble.addEventListener('ready', function() {
   getWeather(); 
 });
 
-Pebble.addEventListener('appmessage', function(e) { 
-  getWeather(); 
+Pebble.addEventListener('appmessage', function(e) {
+  if (e && e.payload && e.payload.REQUEST_WEATHER !== undefined) getWeather();
 });
 
 Pebble.addEventListener('showConfiguration', function(e) {
@@ -470,7 +529,9 @@ Pebble.addEventListener('webviewclosed', function(e) {
   var oldSettings = JSON.parse(localStorage.getItem('clay-settings')) || {};
   
   // Bypass Clay's integer translation entirely by decoding the raw JSON payload
-  var rawSettings = JSON.parse(decodeURIComponent(e.response));
+  var rawSettings;
+  try { rawSettings = JSON.parse(decodeURIComponent(e.response)); }
+  catch (ex) { console.log('Invalid settings response'); return; }
   var settings = oldSettings;
   
   // Merge new settings, safely normalizing object values if Clay wraps them
@@ -500,7 +561,8 @@ Pebble.addEventListener('webviewclosed', function(e) {
     'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0
   };
   
-  Pebble.sendAppMessage(appDict, function() { 
-    getWeather(); 
-  });
+  Pebble.sendAppMessage(appDict, function() {
+    lastWeatherSuccess = 0;
+    getWeather(true);
+  }, function() { console.log('Settings delivery failed'); getWeather(true); });
 });
