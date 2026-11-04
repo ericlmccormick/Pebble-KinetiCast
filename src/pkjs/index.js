@@ -130,6 +130,15 @@ function nwsForecastToOWM(forecastStr, isDay) {
 // OPEN-METEO ENGINE (KEYLESS GLOBAL)
 // ------------------------------------------------------------------------------
 
+function readSettings() {
+  try { return JSON.parse(localStorage.getItem('clay-settings') || '{}') || {}; }
+  catch (err) { console.log('KinetiCast: resetting malformed settings'); return {}; }
+}
+function settingEnabled(value, fallback) {
+  if (value === undefined || value === null) return fallback;
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
 var weatherInFlight = false;
 var weatherWatchdog = null;
 var weatherRetryTimer = null;
@@ -202,7 +211,7 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'IS_NIGHT': json.current.is_day === 0 ? 1 : 0,
         'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ) || 30, 
         'UV_INDEX': Math.round(json.current.uv_index),
-        'SHOW_SLEEP': (settings.SHOW_SLEEP !== false) ? 1 : 0,
+        'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
         'DAY1_HIGH': Math.round(json.daily.temperature_2m_max[1]),
@@ -281,7 +290,7 @@ function fetchMetNo(lat, lon, units, settings) {
         'IS_NIGHT': isNight,
         'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ) || 30,
         'UV_INDEX': 0,
-        'SHOW_SLEEP': (settings.SHOW_SLEEP !== false) ? 1 : 0,
+        'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
         'DAY1_HIGH': formatTemp(dailyData[days[1]].max),
@@ -368,7 +377,7 @@ function fetchNWS(lat, lon, units, settings) {
             'IS_NIGHT': isNight,
             'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ) || 30,
             'UV_INDEX': 0,
-            'SHOW_SLEEP': (settings.SHOW_SLEEP !== false) ? 1 : 0,
+            'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
             'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
             'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
             'DAY1_HIGH': convertTemp(days[1].high, days[1].unit),
@@ -411,7 +420,7 @@ function fetchOpenWeather(lat, lon, units, settings) {
         'IS_NIGHT': json.current.weather[0].icon.includes('n') ? 1 : 0,
         'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ) || 30, 
         'UV_INDEX': Math.round(json.current.uvi),
-        'SHOW_SLEEP': (settings.SHOW_SLEEP !== false) ? 1 : 0,
+        'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
         'DAY1_HIGH': Math.round(json.daily[1].temp.max),
@@ -449,7 +458,7 @@ function executeProviderFetch(lat, lon, units, settings) {
 }
 
 function getWeather() {
-  var settings = JSON.parse(localStorage.getItem('clay-settings') || '{}');
+  var settings = readSettings();
   var units = settings.UNITS || 'imperial';
   var provider = settings.WEATHER_PROVIDER || 'openmeteo';
   var now = Date.now();
@@ -460,7 +469,7 @@ function getWeather() {
   weatherInFlight = true;
   weatherWatchdog = setTimeout(function() { weatherFinished(false, 'request watchdog timeout'); }, 35000);
 
-  if (settings.USE_GPS !== false) {
+  if (settingEnabled(settings.USE_GPS, true)) {
     navigator.geolocation.getCurrentPosition(
       function(pos) { executeProviderFetch(pos.coords.latitude, pos.coords.longitude, units, settings); }, 
       function(err) { weatherFinished(false, 'GPS unavailable: ' + (err && err.message || 'unknown')); }, 
@@ -512,7 +521,7 @@ Pebble.addEventListener('appmessage', function(e) {
 });
 
 Pebble.addEventListener('showConfiguration', function(e) {
-  var settings = JSON.parse(localStorage.getItem('clay-settings')) || {};
+  var settings = readSettings();
   
   if (settings.API_KEY && !settings.WEATHER_PROVIDER) {
     settings.WEATHER_PROVIDER = 'openweathermap';
@@ -529,7 +538,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
   // Guard against missing responses or explicit CANCEL actions
   if (!e || !e.response || e.response === 'CANCEL') { return; }
   
-  var oldSettings = JSON.parse(localStorage.getItem('clay-settings')) || {};
+  var oldSettings = readSettings();
   
   // Bypass Clay's integer translation entirely by decoding the raw JSON payload
   var rawSettings;
