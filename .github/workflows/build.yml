@@ -24,10 +24,13 @@ jobs:
           node tests/weather-units.test.js
           node tests/weather-providers.test.js
           node -e "const p=require('./package.json');if(p.pebble.sdkVersion!=='3'||!p.pebble.targetPlatforms.includes('emery'))process.exit(1)"
-      - name: Install Pebble CLI and latest SDK
+      # Keep the application SDK at or below firmware deployed to Pebble Time 2.
+      # Installing 'latest' can produce a PBW that refuses to load on 4.44.x firmware.
+      - name: Install Pebble CLI and firmware-compatible SDK
         run: |
           uv tool install pebble-tool
-          pebble sdk install latest
+          pebble sdk install 4.44.2
+          pebble sdk activate 4.44.2
           pebble sdk list
       - name: Build for Emery
         run: pebble build
