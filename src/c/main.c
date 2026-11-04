@@ -506,19 +506,19 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   
   struct tm *t1 = localtime(&(time_t){weekday_now + SECONDS_PER_DAY}); 
   snprintf(d1_txt, sizeof(d1_txt), "%s", day_names[t1->tm_wday]); 
-  snprintf(t1_txt, sizeof(t1_txt), "%d°/%d°", s_d1_hi, s_d1_lo); 
+  snprintf(t1_txt, sizeof(t1_txt), s_temp_unit == 2 ? "%d/%d" : "%d°/%d°", s_d1_hi, s_d1_lo); 
   text_layer_set_text(s_f_day1_layer, d1_txt); 
   text_layer_set_text(s_f_temp1_layer, t1_txt); 
   
   struct tm *t2 = localtime(&(time_t){weekday_now + (SECONDS_PER_DAY * 2)}); 
   snprintf(d2_txt, sizeof(d2_txt), "%s", day_names[t2->tm_wday]); 
-  snprintf(t2_txt, sizeof(t2_txt), "%d°/%d°", s_d2_hi, s_d2_lo); 
+  snprintf(t2_txt, sizeof(t2_txt), s_temp_unit == 2 ? "%d/%d" : "%d°/%d°", s_d2_hi, s_d2_lo); 
   text_layer_set_text(s_f_day2_layer, d2_txt); 
   text_layer_set_text(s_f_temp2_layer, t2_txt); 
   
   struct tm *t3 = localtime(&(time_t){weekday_now + (SECONDS_PER_DAY * 3)}); 
   snprintf(d3_txt, sizeof(d3_txt), "%s", day_names[t3->tm_wday]); 
-  snprintf(t3_txt, sizeof(t3_txt), "%d°/%d°", s_d3_hi, s_d3_lo); 
+  snprintf(t3_txt, sizeof(t3_txt), s_temp_unit == 2 ? "%d/%d" : "%d°/%d°", s_d3_hi, s_d3_lo); 
   text_layer_set_text(s_f_day3_layer, d3_txt); 
   text_layer_set_text(s_f_temp3_layer, t3_txt); 
 
@@ -769,12 +769,14 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
   Tuple *t = dict_read_first(iter); 
   bool theme_changed = false;
   bool layout_changed = false;
+  bool forecast_icons_changed = false;
+  bool weather_changed = false;
 
   while(t) { 
-    if(t->key == MESSAGE_KEY_TEMP_CURRENT) { s_cur = get_int(t); s_has_weather = true; s_last_weather_success = time(NULL); }
+    if(t->key == MESSAGE_KEY_TEMP_CURRENT) { s_cur = get_int(t); s_has_weather = true; s_last_weather_success = time(NULL); weather_changed = true; }
     else if(t->key == MESSAGE_KEY_TEMP_HIGH) s_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_TEMP_LOW) s_lo = get_int(t);
-    else if(t->key == MESSAGE_KEY_CONDITIONS) set_weather_icon(t->value->cstring);
+    else if(t->key == MESSAGE_KEY_CONDITIONS && t->type == TUPLE_CSTRING) { if(strcmp(s_icon_code, t->value->cstring)) set_weather_icon(t->value->cstring); }
     else if(t->key == MESSAGE_KEY_UPDATE_FREQ) s_update_freq = get_int(t);
     else if(t->key == MESSAGE_KEY_UNITS || t->key == MESSAGE_KEY_DISTANCE_UNIT) { s_use_metric = (get_int(t) == 1); update_health(); }
     else if(t->key == MESSAGE_KEY_TEMP_UNIT) { int unit = get_int(t); s_temp_unit = (unit >= 0 && unit <= 3) ? unit : 0; }
@@ -800,18 +802,19 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     }
     else if(t->key == MESSAGE_KEY_DAY1_HIGH) s_d1_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY1_LOW) s_d1_lo = get_int(t);
-    else if(t->key == MESSAGE_KEY_DAY1_ICON) snprintf(s_d1_ic, sizeof(s_d1_ic), "%s", t->value->cstring);
+    else if(t->key == MESSAGE_KEY_DAY1_ICON && t->type == TUPLE_CSTRING) { if(strcmp(s_d1_ic, t->value->cstring)) { snprintf(s_d1_ic, sizeof(s_d1_ic), "%s", t->value->cstring); forecast_icons_changed = true; }}
     else if(t->key == MESSAGE_KEY_DAY2_HIGH) s_d2_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY2_LOW) s_d2_lo = get_int(t);
-    else if(t->key == MESSAGE_KEY_DAY2_ICON) snprintf(s_d2_ic, sizeof(s_d2_ic), "%s", t->value->cstring);
+    else if(t->key == MESSAGE_KEY_DAY2_ICON && t->type == TUPLE_CSTRING) { if(strcmp(s_d2_ic, t->value->cstring)) { snprintf(s_d2_ic, sizeof(s_d2_ic), "%s", t->value->cstring); forecast_icons_changed = true; }}
     else if(t->key == MESSAGE_KEY_DAY3_HIGH) s_d3_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY3_LOW) s_d3_lo = get_int(t);
-    else if(t->key == MESSAGE_KEY_DAY3_ICON) snprintf(s_d3_ic, sizeof(s_d3_ic), "%s", t->value->cstring);
+    else if(t->key == MESSAGE_KEY_DAY3_ICON && t->type == TUPLE_CSTRING) { if(strcmp(s_d3_ic, t->value->cstring)) { snprintf(s_d3_ic, sizeof(s_d3_ic), "%s", t->value->cstring); forecast_icons_changed = true; }}
 
     t = dict_read_next(iter); 
   }
   save_weather_data(); 
-  generate_forecast_bitmaps();
+  if (forecast_icons_changed) generate_forecast_bitmaps();
+  if (weather_changed) layer_mark_dirty(s_weather_arc_layer);
   
   if (theme_changed) update_theme_colors(); 
   if (layout_changed) execute_panel_transition(false); 
