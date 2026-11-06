@@ -1,10 +1,16 @@
 name: Pebble build and static checks
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, improve-reliability-sdk-2026]
   pull_request:
 
+permissions:
+  contents: write
+concurrency:
+  group: kineticast-direct-pbw-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -40,3 +46,22 @@ jobs:
           name: kineticast-emery
           path: build/*.pbw
           if-no-files-found: error
+
+      - name: Prepare direct-download PBW
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          mkdir -p direct-download
+          cp build/*.pbw direct-download/kineticast.pbw
+      - name: Publish direct PBW from successful main build
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view dev-latest >/dev/null 2>&1; then
+            gh release create dev-latest --target "$GITHUB_SHA" \
+              --title "Latest development PBW" --prerelease \
+              --notes "Automatically updated after successful main builds. Download the .pbw directly without extracting the Actions ZIP."
+          fi
+          gh release upload dev-latest direct-download/kineticast.pbw --clobber
+          echo "### Direct PBW" >> "$GITHUB_STEP_SUMMARY"
+          echo "[Download KinetiCast.pbw](https://github.com/$GITHUB_REPOSITORY/releases/download/dev-latest/kineticast.pbw)" >> "$GITHUB_STEP_SUMMARY"
