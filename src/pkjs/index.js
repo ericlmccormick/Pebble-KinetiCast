@@ -102,6 +102,18 @@ var clayConfig = [
         "defaultValue": "__all__",
         "options": [ { "label": "All Calendars", "value": "__all__" } ] },
       { "type": "text", "defaultValue": "Calendar choices are discovered from events returned by the Pebble Calendar plugin (up to ten events in seven days); calendars with no returned events may not appear. Enable calendar access in the Pebble phone app." },
+      { "type": "toggle", "messageKey": "PERSISTENT_CALENDAR_ENABLE", "label": "Persistent Calendar Notification",
+        "defaultValue": false,
+        "description": "Automatically show the next selected-calendar event in the lower panel shortly before it starts, then restore the default panel." },
+      { "type": "select", "messageKey": "PERSISTENT_CALENDAR_MINUTES", "label": "Show Before Event",
+        "defaultValue": "15", "options": [
+          { "label": "5 minutes", "value": "5" },
+          { "label": "10 minutes", "value": "10" },
+          { "label": "15 minutes", "value": "15" },
+          { "label": "20 minutes", "value": "20" },
+          { "label": "25 minutes", "value": "25" },
+          { "label": "30 minutes", "value": "30" }
+        ] },
       { 
         "type": "select", 
         "messageKey": "THEME_MODE", 
@@ -389,6 +401,10 @@ function normalizeShakeThreshold(value) {
   if (!isFinite(n)) return 300;
   return Math.max(100, Math.min(2600, 100 + Math.round((n - 100) / 50) * 50));
 }
+function persistentCalendarMinutes(value) {
+  var n = parseInt(value, 10);
+  return n >= 5 && n <= 30 && n % 5 === 0 ? n : 15;
+}
 function syncLegacyPreferences(settings) {
   settings.SHAKE_SENSITIVITY = normalizeShakeThreshold(settings.SHAKE_SENSITIVITY);
   if (!settings.TEMP_UNIT) settings.TEMP_UNIT = desiredTempUnit(settings);
@@ -512,6 +528,8 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
+    'PERSISTENT_CALENDAR_ENABLE': settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false) ? 1 : 0,
+    'PERSISTENT_CALENDAR_MINUTES': persistentCalendarMinutes(settings.PERSISTENT_CALENDAR_MINUTES),
         'DAY1_HIGH': json.daily.temperature_2m_max[1],
         'DAY1_LOW': json.daily.temperature_2m_min[1],
         'DAY1_ICON': getWmoIcon(json.daily.weather_code[1], 1),
