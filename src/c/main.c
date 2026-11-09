@@ -375,9 +375,10 @@ static void shake_data_handler(AccelData *data, uint32_t count) {
 static void update_shake_subscription(void) {
   stop_shake_tracking();
   if (s_shake_action == 2) return;
-  // Four samples per callback means ~2.5 callbacks/second.
-  accel_service_set_sampling_rate(ACCEL_SAMPLING_10HZ);
-  accel_data_service_subscribe(4, shake_data_handler);
+  // Pebble SDK default: 25 Hz (one sample every 40 ms).
+  // Batch 5 samples per callback to limit processing wakeups (~5 Hz).
+  accel_service_set_sampling_rate(ACCEL_SAMPLING_25HZ);
+  accel_data_service_subscribe(5, shake_data_handler);
   s_shake_tracking = true;
 }
 
