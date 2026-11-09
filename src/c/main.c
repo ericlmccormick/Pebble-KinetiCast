@@ -611,7 +611,11 @@ static void update_calendar_countdown(void) {
     else if (remaining < 86400) snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "In %luh %lum", (unsigned long)(remaining / 3600), (unsigned long)((remaining % 3600) / 60));
     else snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "In %lu days, %luh", (unsigned long)(remaining / 86400), (unsigned long)((remaining % 86400) / 3600));
   }
-  text_layer_set_text(s_calendar_countdown_layer, s_calendar_countdown);
+  static char last_calendar_countdown[48] = "";
+  if (strcmp(s_calendar_countdown, last_calendar_countdown)) {
+    snprintf(last_calendar_countdown, sizeof(last_calendar_countdown), "%s", s_calendar_countdown);
+    text_layer_set_text(s_calendar_countdown_layer, s_calendar_countdown);
+  }
 }
 
 static void bluetooth_callback(bool connected) {
@@ -849,6 +853,17 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   strftime(d_buf, sizeof(d_buf), "%a, %b %d", tick_time); 
   text_layer_set_text(s_date_layer, d_buf); 
   
+  // Forecast labels change only when local date, units or forecast values change.
+  static int last_forecast_day = -1, last_forecast_unit = -1;
+  static int last_forecast_values[6] = {0};
+  bool labels_changed = last_forecast_day != tick_time->tm_yday ||
+                        last_forecast_unit != s_temp_unit;
+  int forecast_values[6] = {s_d1_hi,s_d1_lo,s_d2_hi,s_d2_lo,s_d3_hi,s_d3_lo};
+  for (int i=0;i<6;i++) if (forecast_values[i] != last_forecast_values[i]) labels_changed=true;
+  if (labels_changed) {
+    last_forecast_day = tick_time->tm_yday;
+    last_forecast_unit = s_temp_unit;
+    for (int i=0;i<6;i++) last_forecast_values[i]=forecast_values[i];
   static char d1_txt[8], d2_txt[8], d3_txt[8]; 
   static char t1_txt[12], t2_txt[12], t3_txt[12]; 
   static const char* const day_names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}; 
@@ -870,7 +885,8 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   snprintf(d3_txt, sizeof(d3_txt), "%s", day_names[t3->tm_wday]); 
   snprintf(t3_txt, sizeof(t3_txt), s_temp_unit == 2 ? "%d/%d" : "%d°/%d°", s_d3_hi, s_d3_lo); 
   text_layer_set_text(s_f_day3_layer, d3_txt); 
-  text_layer_set_text(s_f_temp3_layer, t3_txt); 
+  text_layer_set_text(s_f_temp3_layer, t3_txt);
+  } 
 
   update_persistent_calendar();
   update_calendar_countdown();
@@ -892,36 +908,62 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   } else {
     animate_sleep_layer(false); 
   }
-  for(int i = 0; i < HR_HISTORY_SIZE - 1; i++) s_hr_history[i] = s_hr_history[i+1]; 
-  int sampled_bpm = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
-  s_hr_history[HR_HISTORY_SIZE - 1] = sampled_bpm > 0 ? sampled_bpm : 0;
-  layer_mark_dirty(s_hr_graph_layer); 
+  bool graph_changed=false;
+  for (int i=0;i<HR_HISTORY_SIZE-1;i++) {
+    if (s_hr_history[i] != s_hr_history[i+1]) graph_changed=true;
+    s_hr_history[i]=s_hr_history[i+1];
+  }
+  int sampled_bpm=(int)health_service_peek_current_value(HealthMetricHeartRateBPM);
+  sampled_bpm=sampled_bpm>0?sampled_bpm:0;
+  if (s_hr_history[HR_HISTORY_SIZE-1] != sampled_bpm) graph_changed=true;
+  s_hr_history[HR_HISTORY_SIZE-1]=sampled_bpm;
+  if (graph_changed) layer_mark_dirty(s_hr_graph_layer);
+  if (!s_health_live_updates) update_health();
   #endif
 }
 
 static void update_health() {
   #if defined(PBL_HEALTH)
   int bpm = (int)health_service_peek_current_value(HealthMetricHeartRateBPM);
-  if (bpm > 0) snprintf(s_hr_buf, sizeof(s_hr_buf), "%d", bpm);
-  else snprintf(s_hr_buf, sizeof(s_hr_buf), "--"); 
-  text_layer_set_text(s_hr_layer, s_hr_buf); 
-  
+  char hr_value[8];
+  if (bpm > 0) snprintf(hr_value, sizeof(hr_value), "%d", bpm);
+  else snprintf(hr_value, sizeof(hr_value), "--");
+  if (strcmp(hr_value, s_hr_buf) != 0) {
+    snprintf(s_hr_buf, sizeof(s_hr_buf), "%s", hr_value);
+    text_layer_set_text(s_hr_layer, s_hr_buf);
+  }
   int dist_m = (int)health_service_sum_today(HealthMetricWalkedDistanceMeters);
   int dist_100th = s_use_metric ? (dist_m * 100) / 1000 : (dist_m * 100) / 1609;
-  snprintf(s_dist_buf, sizeof(s_dist_buf), "%d.%01d", dist_100th / 100, (dist_100th % 100) / 10);
-  text_layer_set_text(s_dist_layer, s_dist_buf); 
-  layer_mark_dirty(s_goals_canvas); 
+  char distance_value[16];
+  snprintf(distance_value, sizeof(distance_value), "%d.%01d",
+    dist_100th / 100, (dist_100th % 100) / 10);
+  if (strcmp(distance_value,s_dist_buf) != 0) {
+    snprintf(s_dist_buf, sizeof(s_dist_buf), "%s", distance_value);
+    text_layer_set_text(s_dist_layer, s_dist_buf);
+  }
+  int steps = (int)health_service_sum_today(HealthMetricStepCount);
+  int active = (int)health_service_sum_today(HealthMetricActiveSeconds);
+  if (steps != s_last_goal_steps || active != s_last_goal_active) {
+    s_last_goal_steps = steps;
+    s_last_goal_active = active;
+    layer_mark_dirty(s_goals_canvas);
+  }
   #endif
 }
-
 static void health_handler(HealthEventType event, void *context) {
-  if (event == HealthEventSignificantUpdate) { update_daily_goals(); update_health(); }
-  else if (event == HealthEventMovementUpdate || event == HealthEventHeartRateUpdate) update_health();
+  (void)context;
+  if (event == HealthEventSignificantUpdate) update_daily_goals();
+  if (!s_health_live_updates) return;
+  if (event == HealthEventSignificantUpdate ||
+      event == HealthEventMovementUpdate ||
+      event == HealthEventHeartRateUpdate) update_health();
 }
 
 static void battery_callback(BatteryChargeState state) {
-  s_battery_level = state.charge_percent; 
-  layer_mark_dirty(s_battery_layer); 
+  if (s_battery_level == state.charge_percent) return;
+  s_battery_level = state.charge_percent;
+  if (s_battery_layer) layer_mark_dirty(s_battery_layer);
+
 }
 
 // ==============================================================================
