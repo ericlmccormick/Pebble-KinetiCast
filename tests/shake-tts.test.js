@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const c=fs.readFileSync('src/c/main.c','utf8');
 const js=fs.readFileSync('src/pkjs/index.js','utf8');
 const manifest=require('../package.json');
-assert.equal(manifest.version,'2.3.6');
+assert.equal(manifest.version,'2.3.7');
 for(const key of ['COMMAND','TEXT','CHUNK','SHAKE_ACTION','SHAKE_SENSITIVITY','SHAKE_LENGTH'])assert.ok(Number.isInteger(manifest.pebble.messageKeys[key]));
 assert.equal(new Set(Object.values(manifest.pebble.messageKeys)).size,Object.keys(manifest.pebble.messageKeys).length);
 assert.ok(manifest.pebble.usesPermissions.some(p=>p.name==='UniversalTtsSpeak'&&p.plugin==='2c5edc42-b096-4f76-b284-1f27907e6502'));
@@ -23,10 +23,10 @@ for(const f of ['src/c/universal_tts.c','src/c/universal_tts.h','src/pkjs/univer
 console.log('Shake action / Universal TTS integration checks passed');
 
 assert.match(js,/"type": "slider", "messageKey": "SHAKE_SENSITIVITY"/);
-assert.match(js,/"min": 100, "max": 500, "step": 10/);
+assert.match(js,/"min": 100, "max": 2600, "step": 50/);
 assert.match(js,/normalizeShakeThreshold\(settings.SHAKE_SENSITIVITY\)/);
-assert.match(c,/value == 0 \? 460 : \(value == 1 \? 290 : 160\)/);
-assert.match(c,/value >= 100 && value <= 500/);
+assert.match(c,/value == 0 \? 450 : \(value == 1 \? 300 : 150\)/);
+assert.match(c,/value >= 100 && value <= 2600/);
 assert.match(js,/messageKey": "SHAKE_LENGTH"/);
 assert.match(js,/'SHAKE_SENSITIVITY': normalizeShakeThreshold\(settings.SHAKE_SENSITIVITY\)/);
 assert.match(js,/'SHAKE_LENGTH':/);
@@ -61,3 +61,6 @@ assert.ok(c.includes('peak_mg >= s_shake_sensitivity ? "ABOVE" : "BELOW"'));
 assert.ok(c.includes('app_timer_register(7000, hide_shake_test_callback, NULL)'));
 console.log('Shake strength diagnostic regression checks passed');
 
+
+assert.match(js, /Math\.min\(2600, 100 \+ Math\.round\(\(n - 100\) \/ 50\) \* 50\)/);
+assert.match(c, /100 \+ \(\(value - 100 \+ 25\) \/ 50\) \* 50/);
