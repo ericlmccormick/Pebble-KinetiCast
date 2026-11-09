@@ -2,7 +2,7 @@
 
 Pebble Time 2 watchface combining clock, weather and health information.
 
-**Current source version:** 2.3.1 (see `package.json`). **Target:** Emery / Pebble Time 2.
+**Current source version:** 2.3.2 (see `package.json`). **Target:** Emery / Pebble Time 2.
 
 ## Features and setup
 
@@ -22,7 +22,7 @@ Speak Time requires a speaker-capable watch, the [Universal TTS plugin](https://
 
 Shake sensitivity is independently adjustable (Low, Medium, High), and shake length can be Short, Medium or Long. The detector verifies acceleration changes sustained for the selected duration; longer, less-sensitive gestures are recommended for spoken time. Accelerometer sampling is activated only briefly after a tap/shake indication to limit battery impact. Saved preferences persist across restarts. The legacy high/short behavior remains until users save new gesture settings.
 
-## Development
+## Next calendar event panel\n\nSelect **Next Calendar Event** as the default lower panel, or **Show Next Calendar Event** on a shake for seven seconds. The display includes the next future appointment title and a watch-local minute countdown. Use the native Pebble Calendar plugin; no external calendar credentials are stored. The phone settings offer **All Calendars** or names discovered in the current plugin events (up to ten events/seven days); the plugin does not expose a separate exhaustive calendar registry. Previously discovered names are retained. Missing permissions or data display an unavailable/empty state rather than fabricating an event.\n\n## Development
 
 The project is a native Pebble SDK 3 app. Run `pebble build` with a supported SDK, or use [GitHub Actions](.github/workflows/build.yml). Review `package.json` for the authoritative platform, version and AppMessage keys. Regression tests are in `tests/`; they cover weather provider, units, transport and release assumptions.
 
