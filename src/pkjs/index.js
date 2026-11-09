@@ -79,7 +79,25 @@ var clayConfig = [
           { "label": "Do Nothing", "value": "2" }
         ]
       },
-      { "type": "text", "defaultValue": "Speak Time requires the Universal TTS plugin, a configured voice, and a watch with a speaker. The default shake action remains Show Other Panel for existing installations." },
+      {
+        "type": "select", "messageKey": "SHAKE_SENSITIVITY",
+        "label": "Shake Sensitivity", "defaultValue": "0",
+        "options": [
+          { "label": "Low (requires stronger motion)", "value": "0" },
+          { "label": "Medium", "value": "1" },
+          { "label": "High (easier to trigger)", "value": "2" }
+        ]
+      },
+      {
+        "type": "select", "messageKey": "SHAKE_LENGTH",
+        "label": "Shake Length", "defaultValue": "2",
+        "options": [
+          { "label": "Short (quick shake)", "value": "0" },
+          { "label": "Medium (about half a second)", "value": "1" },
+          { "label": "Long (sustained shake)", "value": "2" }
+        ]
+      },
+      { "type": "text", "defaultValue": "For Speak Time, start with Low sensitivity and Long duration to reduce accidental announcements. Existing saved gesture preferences are preserved. TTS requires the Universal TTS plugin and a watch speaker." },
       { 
         "type": "select", 
         "messageKey": "THEME_MODE", 
@@ -961,6 +979,8 @@ Pebble.addEventListener('webviewclosed', function(e) {
     'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
     'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
     'SHAKE_ACTION': parseInt(settings.SHAKE_ACTION, 10) || 0,
+    'SHAKE_SENSITIVITY': settings.SHAKE_SENSITIVITY === undefined ? 0 : parseInt(settings.SHAKE_SENSITIVITY, 10),
+    'SHAKE_LENGTH': settings.SHAKE_LENGTH === undefined ? 2 : parseInt(settings.SHAKE_LENGTH, 10),
     'HR_GRAPH_WINDOW': parseInt(settings.HR_GRAPH_WINDOW, 10) || 20,
     'SLEEP_BRIEF_SECONDS': parseInt(settings.SLEEP_BRIEF_SECONDS, 10) || 0
   };
