@@ -351,7 +351,10 @@ function powerActivitySummary(settings) {
     '. Calendar: '+cal+'. Health: '+health+
     '. Weather: '+(!weatherUpdatesEnabled(settings) ? 'OFF (saved forecast remains)' : chosenWeatherSource(settings)==='weatherplus'? 'shared Weather+ cache' :
       'built-in provider every '+(settings.UPDATE_FREQ||30)+' min')+
-    '. Power in mA/mWh cannot be attributed to individual features by the public watchface APIs.';
+    '. This phone session: calendar reads='+activityCounters.calendarReads+
+    ', calendar messages='+activityCounters.calendarMessages+
+    ', weather messages='+activityCounters.weatherMessages+
+    '. No per-feature mA/mWh breakdown is exposed by watchface APIs.';
 }
 function updateCalendarSelectOptions(){
   var names=calendarNames(),chosen=String(readSettings().CALENDAR_FILTER||'__all__');
