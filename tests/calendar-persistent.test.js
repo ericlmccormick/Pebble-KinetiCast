@@ -50,7 +50,9 @@ assert.match(source, /'PERSISTENT_CALENDAR_MINUTES': persistentCalendarMinutes\(
 // the configured lead time. Remaining visible after start would be a regression.
 assert.match(native, /static bool calendar_takeover_due_at\(time_t now\)/);
 assert.match(native, /seconds > 0 && seconds <= s_persistent_calendar_minutes \* 60/);
-assert.match(native, /s_calendar_start_timer = app_timer_register\(remaining \* 1000, calendar_start_callback, NULL\)/);
+assert.match(native, /uint32_t next_transition = remaining > lead_seconds/);
+assert.match(native, /next_transition \* 1000, calendar_start_callback, NULL/);
+assert.match(native, /next_transition > 0 && next_transition <= 1800/);
 assert.match(native, /update_persistent_calendar\(\);\s*update_calendar_countdown\(\);/);
 assert.match(native, /int target = s_calendar_takeover_active \? 2 :/);
 assert.match(native, /&& !s_calendar_takeover_active\)/);
