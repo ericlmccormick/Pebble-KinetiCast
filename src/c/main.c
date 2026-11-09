@@ -1,4 +1,5 @@
 #include <pebble.h>
+#include "universal_tts.h"
 
 // ==============================================================================
 // SECTION: CONSTANTS, IDENTIFIERS & STORAGE KEYS
@@ -29,6 +30,7 @@
 #define PERSIST_KEY_SLEEP_DURATION 31
 #define PERSIST_KEY_TEMP_UNIT 32
 #define PERSIST_KEY_DISTANCE_UNIT 33
+#define PERSIST_KEY_SHAKE_ACTION 34
 
 #define HR_HISTORY_SIZE 60 
 
@@ -58,7 +60,9 @@ static int s_hr_window = 20;
 static int s_step_goal = 10000, s_active_goal = 30; 
 static bool s_connected = true, s_use_metric = false, s_is_night = false, s_show_sleep = true;
 static int s_temp_unit = 0; // F=0, C=1, K=2, R=3 
-static int s_theme_mode = 0, s_default_view = 0; 
+static int s_theme_mode = 0, s_default_view = 0;
+// 0: alternate panel (legacy); 1: speak clock time; 2: disabled.
+static int s_shake_action = 0; 
 static bool s_view_is_swapped = false; 
 
 static int s_d1_hi = 0, s_d1_lo = 0, s_d2_hi = 0, s_d2_lo = 0, s_d3_hi = 0, s_d3_lo = 0; 
@@ -139,6 +143,7 @@ static void save_weather_data() {
   persist_write_bool(PERSIST_KEY_SHOW_SLEEP, s_show_sleep); 
   persist_write_int(PERSIST_KEY_THEME_MODE, s_theme_mode); 
   persist_write_int(PERSIST_KEY_DEFAULT_VIEW, s_default_view);
+  persist_write_int(PERSIST_KEY_SHAKE_ACTION, s_shake_action);
   persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window);
   persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration);
   persist_write_int(PERSIST_KEY_TEMP_UNIT, s_temp_unit);
@@ -175,6 +180,10 @@ static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_DISTANCE_UNIT)) s_use_metric = persist_read_bool(PERSIST_KEY_DISTANCE_UNIT);
   if (persist_exists(PERSIST_KEY_THEME_MODE)) s_theme_mode = persist_read_int(PERSIST_KEY_THEME_MODE);
   if (persist_exists(PERSIST_KEY_DEFAULT_VIEW)) s_default_view = persist_read_int(PERSIST_KEY_DEFAULT_VIEW);
+  if (persist_exists(PERSIST_KEY_SHAKE_ACTION)) {
+    int action = persist_read_int(PERSIST_KEY_SHAKE_ACTION);
+    s_shake_action = (action >= 0 && action <= 2) ? action : 0;
+  }
   if (persist_exists(PERSIST_KEY_SLEEP_DURATION)) {
     int duration = persist_read_int(PERSIST_KEY_SLEEP_DURATION);
     s_sleep_duration = (duration == 15 || duration == 30 || duration == 60) ? duration : 0;
@@ -195,28 +204,52 @@ static void load_weather_data() {
   persist_read_string(PERSIST_KEY_D3_IC, s_d3_ic, sizeof(s_d3_ic));
 }
 
+static void speak_local_time(void) {
+  if (!universal_tts_supported() || !s_connected) return;
+  time_t now = time(NULL);
+  struct tm *local = localtime(&now);
+  if (!local) return;
+  int hour = local->tm_hour;
+  char phrase[80];
+  if (clock_is_24h_style()) {
+    // Read 24-hour clock without an AM/PM suffix.
+    snprintf(phrase, sizeof(phrase), "The time is %d %02d.", hour, local->tm_min);
+  } else {
+    int spoken_hour = hour % 12;
+    if (!spoken_hour) spoken_hour = 12;
+    snprintf(phrase, sizeof(phrase), "The time is %d %02d %s.",
+      spoken_hour, local->tm_min, hour < 12 ? "AM" : "PM");
+  }
+  DictionaryIterator *out = NULL;
+  if (app_message_outbox_begin(&out) != APP_MSG_OK || !out) return;
+  dict_write_cstring(out, MESSAGE_KEY_COMMAND, "SPEAK_REQUEST");
+  dict_write_cstring(out, MESSAGE_KEY_TEXT, phrase);
+  app_message_outbox_send();
+}
+
 static void tap_handler(AccelAxisType axis, int32_t direction) {
+  (void)axis; (void)direction;
   if (layer_get_frame(s_sleep_layer).origin.y < 228) {
-    if (s_sleep_dismiss_timer) { app_timer_cancel(s_sleep_dismiss_timer); s_sleep_dismiss_timer = NULL; } 
-    animate_sleep_layer(false); 
-    #if defined(PBL_HEALTH) 
+    if (s_sleep_dismiss_timer) { app_timer_cancel(s_sleep_dismiss_timer); s_sleep_dismiss_timer = NULL; }
+    animate_sleep_layer(false);
+    #if defined(PBL_HEALTH)
     s_last_sleep_sec = (int)health_service_sum_today(HealthMetricSleepSeconds);
     persist_write_int(PERSIST_KEY_LAST_SLEEP_SEC, s_last_sleep_sec);
     #endif
   }
-  
-  execute_panel_transition(true); 
-  
-  if (s_view_swap_timer) { app_timer_cancel(s_view_swap_timer); }
-  s_view_swap_timer = app_timer_register(7000, timer_callback, NULL); 
-  
-  request_weather(); 
-  update_health(); 
-  
-  #if defined(PBL_HEALTH)
-  // Do not invent a new historical sample during a tap.
-  layer_mark_dirty(s_hr_graph_layer); 
-  #endif
+
+  if (s_shake_action == 0) {
+    execute_panel_transition(true);
+    if (s_view_swap_timer) app_timer_cancel(s_view_swap_timer);
+    s_view_swap_timer = app_timer_register(7000, timer_callback, NULL);
+    request_weather();
+    update_health();
+    #if defined(PBL_HEALTH)
+    layer_mark_dirty(s_hr_graph_layer);
+    #endif
+  } else if (s_shake_action == 1) {
+    speak_local_time();
+  }
 }
 
 static void update_daily_goals() {
@@ -767,6 +800,7 @@ static void main_window_unload(Window *window) {
 }
 
 static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
+  if (universal_tts_handle_message(iter)) return;
   Tuple *t = dict_read_first(iter); 
   bool theme_changed = false;
   bool layout_changed = false;
@@ -805,6 +839,12 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
       s_hr_window = (size == 30 || size == 60) ? size : 20;
       layer_mark_dirty(s_hr_graph_layer);
     }
+    else if(t->key == MESSAGE_KEY_SHAKE_ACTION) {
+      int action = get_int(t);
+      s_shake_action = (action >= 0 && action <= 2) ? action : 0;
+      if (s_view_swap_timer) { app_timer_cancel(s_view_swap_timer); s_view_swap_timer = NULL; }
+      if (s_view_is_swapped) { execute_panel_transition(false); }
+    }
     else if(t->key == MESSAGE_KEY_DEFAULT_VIEW) {
       if (s_default_view != get_int(t)) { s_default_view = get_int(t); layout_changed = true; }
     }
@@ -839,9 +879,10 @@ static void init() {
   tick_timer_service_subscribe(MINUTE_UNIT, update_time); 
   battery_state_service_subscribe(battery_callback); 
   battery_callback(battery_state_service_peek()); 
-  accel_tap_service_subscribe(tap_handler); 
+  accel_tap_service_subscribe(tap_handler);
+  universal_tts_init(); 
   app_message_register_inbox_received(inbox_received_callback); 
-  app_message_open(512, 512); 
+  app_message_open(4096, 512); 
   
   connection_service_subscribe((ConnectionHandlers) { .pebble_app_connection_handler = bluetooth_callback }); 
   bluetooth_callback(connection_service_peek_pebble_app_connection()); 
@@ -861,6 +902,7 @@ int main(void) {
   #if defined(PBL_HEALTH)
   health_service_events_unsubscribe();
   #endif
+  universal_tts_deinit();
   app_message_deregister_callbacks();
   window_destroy(s_main_window);
 }
