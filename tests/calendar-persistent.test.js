@@ -6,7 +6,7 @@ const source = fs.readFileSync('src/pkjs/index.js','utf8');
 const native = fs.readFileSync('src/c/main.c','utf8');
 const manifest = require('../package.json');
 const customClay = require('../src/pkjs/custom-clay');
-assert.equal(manifest.version, '2.4.0');
+assert.equal(manifest.version, '2.4.1');
 assert.equal(manifest.pebble.messageKeys.PERSISTENT_CALENDAR_ENABLE,43);
 assert.equal(manifest.pebble.messageKeys.PERSISTENT_CALENDAR_MINUTES,44);
 
@@ -51,7 +51,7 @@ assert.match(source, /'PERSISTENT_CALENDAR_MINUTES': persistentCalendarMinutes\(
 assert.match(native, /static bool calendar_takeover_due_at\(time_t now\)/);
 assert.match(native, /seconds > 0 && seconds <= s_persistent_calendar_minutes \* 60/);
 assert.match(native, /uint32_t next_transition = remaining > lead_seconds/);
-assert.match(native, /next_transition \* 1000, calendar_start_callback, NULL/);
+assert.match(native, /\(desired_transition - \(uint32_t\)now\) \* 1000/);
 assert.match(native, /next_transition > 0 && next_transition <= 1800/);
 assert.match(native, /update_persistent_calendar\(\);\s*update_calendar_countdown\(\);/);
 assert.match(native, /int target = s_calendar_takeover_active \? 2 :/);
@@ -78,3 +78,9 @@ assert.equal(due(event-600,event,true,15,2),false,'Unavailable calendar');
 assert.equal(due(event-1800,event,true,30),true,'Thirty-minute window');
 assert.equal(due(event-1800,event,true,5),false,'Five-minute window');
 console.log('Persistent calendar timing, settings visibility, and panel priority checks passed');
+
+assert.match(source, /CALENDAR_READ_INTERVAL_MS = 60 \* 60 \* 1000/);
+assert.match(source, /if \(!calendarFeaturesEnabled\(\)\) \{/);
+assert.match(source, /stopCalendarSource\(\); \/\/ do not retain an always-active calendar subscription/);
+assert.match(source, /calendarTimer=setInterval/);
+assert.match(source, /if \(sig === calendarLastSent\) return/);
