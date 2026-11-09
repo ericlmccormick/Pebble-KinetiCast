@@ -67,7 +67,8 @@ var clayConfig = [
         "defaultValue": "0", 
         "options": [
           { "label": "Health Panel (Activity & Vitals)", "value": "0" }, 
-          { "label": "Weather Panel (3-Day Forecast)", "value": "1" }
+          { "label": "Weather Panel (3-Day Forecast)", "value": "1" },
+          { "label": "Next Calendar Event (Countdown)", "value": "2" }
         ]
       },
       {
@@ -76,7 +77,8 @@ var clayConfig = [
         "options": [
           { "label": "Show Other Panel (7 seconds)", "value": "0" },
           { "label": "Speak Time (Universal TTS)", "value": "1" },
-          { "label": "Do Nothing", "value": "2" }
+          { "label": "Do Nothing", "value": "2" },
+          { "label": "Show Next Calendar Event (7 seconds)", "value": "3" }
         ]
       },
       {
@@ -98,6 +100,10 @@ var clayConfig = [
         ]
       },
       { "type": "text", "defaultValue": "For Speak Time, start with Low sensitivity and Long duration to reduce accidental announcements. Existing saved gesture preferences are preserved. TTS requires the Universal TTS plugin and a watch speaker." },
+      { "type": "select", "messageKey": "CALENDAR_FILTER", "label": "Next Event Calendar",
+        "defaultValue": "__all__",
+        "options": [ { "label": "All Calendars", "value": "__all__" } ] },
+      { "type": "text", "defaultValue": "Calendar choices are discovered from events returned by the Pebble Calendar plugin (up to ten events in seven days); calendars with no returned events may not appear. Enable calendar access in the Pebble phone app." },
       { 
         "type": "select", 
         "messageKey": "THEME_MODE", 
