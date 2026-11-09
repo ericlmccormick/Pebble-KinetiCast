@@ -30,6 +30,7 @@ const buildEvents={};
 const page = {
   EVENTS:{AFTER_BUILD:'after_build'},
   on:(name,cb)=>{buildEvents[name]=cb;},
+  getItemById:()=>null,
   getItemByMessageKey:key=>key==='PERSISTENT_CALENDAR_ENABLE'?fakeToggle:
     key==='PERSISTENT_CALENDAR_MINUTES'?fakeLead:null
 };
