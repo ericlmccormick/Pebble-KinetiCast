@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const c=fs.readFileSync('src/c/main.c','utf8');
 const js=fs.readFileSync('src/pkjs/index.js','utf8');
 const manifest=require('../package.json');
-assert.equal(manifest.version,'2.3.5');
+assert.equal(manifest.version,'2.3.6');
 for(const key of ['COMMAND','TEXT','CHUNK','SHAKE_ACTION','SHAKE_SENSITIVITY','SHAKE_LENGTH'])assert.ok(Number.isInteger(manifest.pebble.messageKeys[key]));
 assert.equal(new Set(Object.values(manifest.pebble.messageKeys)).size,Object.keys(manifest.pebble.messageKeys).length);
 assert.ok(manifest.pebble.usesPermissions.some(p=>p.name==='UniversalTtsSpeak'&&p.plugin==='2c5edc42-b096-4f76-b284-1f27907e6502'));
@@ -14,7 +14,7 @@ assert.match(js,/'SHAKE_ACTION': parseInt\(settings.SHAKE_ACTION, 10\) \|\| 0/);
 assert.match(js,/ttsClient\.handleMessage\(e.payload\)/);
 assert.match(js,/e.payload.COMMAND === 'SPEAK_REQUEST'/);
 assert.match(c,/PERSIST_KEY_SHAKE_ACTION 34/);
-assert.match(c,/s_shake_action = \(action >= 0 && action <= 3\) \? action : 0/);
+assert.match(c,/s_shake_action = \(action >= 0 && action <= 4\) \? action : 0/);
 assert.match(c,/if \(s_shake_action == 0 \|\| s_shake_action == 3\)[\s\S]*?execute_panel_transition\(true\)/);
 assert.match(c,/else if \(s_shake_action == 1\)[\s\S]*?speak_local_time\(\)/);
 assert.match(c,/universal_tts_handle_message\(iter\)/);
@@ -38,8 +38,8 @@ assert.match(c,/shake_data_handler\(AccelData \*data, uint32_t count\)/);
 
 // Regression: the watch must accept calendar action 3 in BOTH load and
 // live settings paths. Previously the inbox silently reset it to action 0.
-const cases=Array.from(c.matchAll(/s_shake_action = \(action >= 0 && action <= 3\) \? action : 0/g));
-assert.equal(cases.length,2,'Persisted and incoming shake action must accept 3');
+const cases=Array.from(c.matchAll(/s_shake_action = \(action >= 0 && action <= 4\) \? action : 0/g));
+assert.equal(cases.length,2,'Persisted and incoming shake action must accept 4');
 assert.match(c,/s_panel_override = s_shake_action == 3 \? 2 : -1/);
 assert.match(c,/if \(s_shake_action == 0 \|\| s_shake_action == 3\)/);
 assert.match(c,/update_shake_subscription\(void\)/);
@@ -48,3 +48,14 @@ assert.match(c,/s_shake_length == 2 \? 700 : \(s_shake_length == 1 \? 350 : 100\
 assert.doesNotMatch(c,/accel_tap_service_subscribe\(/,'No tap-gated gesture detector');
 assert.doesNotMatch(c,/s_shake_timeout_timer/,'No tap-gated two-second window');
 console.log('Calendar action 3 and independent gentle-flick sensitivity regression checks passed');
+
+// Diagnostic is a fifth action, reports the measured peak rather than faking
+// the configured threshold and permits below-threshold test readings.
+assert.match(js,/Show Shake Strength \\(Test, 7 seconds\\)/);
+assert.match(c,/s_shake_action == 4 \\? 60 : s_shake_sensitivity/);
+assert.match(c,/s_shake_peak_mg = largest/);
+assert.match(c,/sample->timestamp - s_shake_test_start_ms >= 320/);
+assert.match(c,/show_shake_strength\\(peak\\)/);
+assert.match(c,/snprintf\\(s_shake_test_reading_buf,[\\s\\S]*?"Peak: %d mg"/);
+assert.match(c,/peak_mg >= s_shake_sensitivity \\? "ABOVE" : "BELOW"/);
+assert.match(c,/app_timer_register\\(7000, hide_shake_test_callback, NULL\\)/);
