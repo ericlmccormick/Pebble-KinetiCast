@@ -2,7 +2,7 @@
 
 Pebble Time 2 watchface combining clock, weather and health information.
 
-**Current source version:** 2.3.0 (see `package.json`). **Target:** Emery / Pebble Time 2.
+**Current source version:** 2.3.1 (see `package.json`). **Target:** Emery / Pebble Time 2.
 
 ## Features and setup
 
@@ -19,6 +19,8 @@ New installs default to the Weather+ shared source. Existing saved weather provi
 The lower-panel default (Health or Weather) is separate from the Shake Watch Action (Show Other Panel for 7 seconds, Speak Time via Universal TTS, or Do Nothing). Existing installations default to the original panel-swap behavior; no user settings are reset.
 
 Speak Time requires a speaker-capable watch, the [Universal TTS plugin](https://github.com/ericlmccormick/Pebble-Universal-TTS) installed/configured with a working voice, and permission to invoke it. The watch sends its local clock time to the phone-side SDK, which requests the selected provider and streams ADPCM audio back for watch playback. No credentials are stored in KinetiCast.
+
+Shake sensitivity is independently adjustable (Low, Medium, High), and shake length can be Short, Medium or Long. The detector verifies acceleration changes sustained for the selected duration; longer, less-sensitive gestures are recommended for spoken time. Accelerometer sampling is activated only briefly after a tap/shake indication to limit battery impact. Saved preferences persist across restarts. The legacy high/short behavior remains until users save new gesture settings.
 
 ## Development
 
