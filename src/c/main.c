@@ -211,14 +211,17 @@ static void speak_local_time(void) {
   if (!local) return;
   int hour = local->tm_hour;
   char phrase[80];
-  if (clock_is_24h_style()) {
-    // Read 24-hour clock without an AM/PM suffix.
-    snprintf(phrase, sizeof(phrase), "The time is %d %02d.", hour, local->tm_min);
+  int spoken_hour = clock_is_24h_style() ? hour : hour % 12;
+  if (!clock_is_24h_style() && !spoken_hour) spoken_hour = 12;
+  const char *suffix = clock_is_24h_style() ? "" : (hour < 12 ? " AM" : " PM");
+  if (local->tm_min == 0) {
+    snprintf(phrase, sizeof(phrase), "The time is %d o'clock%s.", spoken_hour, suffix);
+  } else if (local->tm_min < 10) {
+    snprintf(phrase, sizeof(phrase), "The time is %d oh %d%s.",
+      spoken_hour, local->tm_min, suffix);
   } else {
-    int spoken_hour = hour % 12;
-    if (!spoken_hour) spoken_hour = 12;
-    snprintf(phrase, sizeof(phrase), "The time is %d %02d %s.",
-      spoken_hour, local->tm_min, hour < 12 ? "AM" : "PM");
+    snprintf(phrase, sizeof(phrase), "The time is %d %d%s.",
+      spoken_hour, local->tm_min, suffix);
   }
   DictionaryIterator *out = NULL;
   if (app_message_outbox_begin(&out) != APP_MSG_OK || !out) return;
