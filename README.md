@@ -2,13 +2,17 @@
 
 Pebble Time 2 watchface combining clock, weather and health information.
 
-**Current source version:** 2.2.2 (see `package.json`). **Target:** Emery / Pebble Time 2.
+**Current source version:** 2.3.0 (see `package.json`). **Target:** Emery / Pebble Time 2.
 
 ## Features and setup
 
 The manifest enables health, location and phone configuration. Watchface settings include time format, weather provider, location (GPS or manual), weather update frequency, temperature/distance units, appearance, and health/sleep display preferences. The OpenWeather provider requires a user-supplied API key; other provider requirements depend on the selection.
 
 Install the watchface, grant requested permissions, then open its settings from the Pebble phone app. Configure weather location/provider before troubleshooting blank forecasts. Health readings depend on watch sensors and Pebble Health data availability.
+
+## Weather+ compatibility
+
+New installs default to the Weather+ shared source. Existing saved weather providers, location, units and credentials are preserved. Weather+ owns its own location, provider, temperature units and 15-minute cache; the watchface retains walking distance, health, appearance, and sleep settings. KinetiCast reads full-calendar-day `daily_high` and `daily_low` rather than aggregating the remaining hours of the day. If Weather+ is unavailable, legacy providers continue to serve as a fallback.
 
 ## Development
 
