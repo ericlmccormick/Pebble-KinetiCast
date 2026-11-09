@@ -33,6 +33,9 @@
 #define PERSIST_KEY_SHAKE_ACTION 34
 #define PERSIST_KEY_SHAKE_SENSITIVITY 35
 #define PERSIST_KEY_SHAKE_LENGTH 36
+#define PERSIST_KEY_EVENT_TITLE 37
+#define PERSIST_KEY_EVENT_START 38
+#define PERSIST_KEY_EVENT_STATUS 39
 
 #define HR_HISTORY_SIZE 60 
 
@@ -47,7 +50,13 @@ static BitmapLayer *s_weather_icon_layer, *s_heart_layer;
 static GBitmap *s_weather_bitmap = NULL, *s_heart_bitmap = NULL; 
 static Layer *s_battery_layer, *s_sleep_layer, *s_hr_graph_layer; 
 
-static Layer *s_health_container, *s_forecast_container; 
+static Layer *s_health_container, *s_forecast_container, *s_calendar_container;
+static TextLayer *s_calendar_title_layer, *s_calendar_countdown_layer, *s_calendar_label_layer;
+static char s_calendar_title[72] = "";
+static char s_calendar_countdown[48] = "";
+static uint32_t s_calendar_start = 0;
+static int s_calendar_status = 0;
+static int s_panel_override = -1; // -1 means selected default. 
 static TextLayer *s_f_day1_layer, *s_f_day2_layer, *s_f_day3_layer; 
 static TextLayer *s_f_temp1_layer, *s_f_temp2_layer, *s_f_temp3_layer; 
 static BitmapLayer *s_f_icon1_layer, *s_f_icon2_layer, *s_f_icon3_layer; 
@@ -96,7 +105,8 @@ static void animate_sleep_layer(bool slide_up);
 static void set_weather_icon(char *icon_code);  
 static void update_health(); 
 static void update_theme_colors(); 
-static void execute_panel_transition(bool alternate_view); 
+static void execute_panel_transition(bool alternate_view);
+static void update_calendar_countdown(void); 
 static void generate_forecast_bitmaps(); 
 
 // ==============================================================================
@@ -140,8 +150,9 @@ static void request_weather() {
 }
 
 static void timer_callback(void *data) {
-  s_view_swap_timer = NULL; 
-  execute_panel_transition(false); 
+  s_view_swap_timer = NULL;
+  s_panel_override = -1;
+  execute_panel_transition(false);
 }
 
 static void save_weather_data() {
@@ -158,6 +169,9 @@ static void save_weather_data() {
   persist_write_int(PERSIST_KEY_SHAKE_ACTION, s_shake_action);
   persist_write_int(PERSIST_KEY_SHAKE_SENSITIVITY, s_shake_sensitivity);
   persist_write_int(PERSIST_KEY_SHAKE_LENGTH, s_shake_length);
+  persist_write_string(PERSIST_KEY_EVENT_TITLE, s_calendar_title);
+  persist_write_int(PERSIST_KEY_EVENT_START, (int)s_calendar_start);
+  persist_write_int(PERSIST_KEY_EVENT_STATUS, s_calendar_status);
   persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window);
   persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration);
   persist_write_int(PERSIST_KEY_TEMP_UNIT, s_temp_unit);
@@ -196,12 +210,15 @@ static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_DEFAULT_VIEW)) s_default_view = persist_read_int(PERSIST_KEY_DEFAULT_VIEW);
   if (persist_exists(PERSIST_KEY_SHAKE_ACTION)) {
     int action = persist_read_int(PERSIST_KEY_SHAKE_ACTION);
-    s_shake_action = (action >= 0 && action <= 2) ? action : 0;
+    s_shake_action = (action >= 0 && action <= 3) ? action : 0;
   }
   if (persist_exists(PERSIST_KEY_SHAKE_SENSITIVITY)) {
     int value = persist_read_int(PERSIST_KEY_SHAKE_SENSITIVITY);
     s_shake_sensitivity = (value >= 0 && value <= 2) ? value : 2;
   }
+  if (persist_exists(PERSIST_KEY_EVENT_TITLE)) persist_read_string(PERSIST_KEY_EVENT_TITLE, s_calendar_title, sizeof(s_calendar_title));
+  if (persist_exists(PERSIST_KEY_EVENT_START)) s_calendar_start = (uint32_t)persist_read_int(PERSIST_KEY_EVENT_START);
+  if (persist_exists(PERSIST_KEY_EVENT_STATUS)) s_calendar_status = persist_read_int(PERSIST_KEY_EVENT_STATUS);
   if (persist_exists(PERSIST_KEY_SHAKE_LENGTH)) {
     int value = persist_read_int(PERSIST_KEY_SHAKE_LENGTH);
     s_shake_length = (value >= 0 && value <= 2) ? value : 0;
@@ -282,7 +299,8 @@ static void perform_shake_action(void) {
     #endif
   }
 
-  if (s_shake_action == 0) {
+  if (s_shake_action == 0 || s_shake_action == 3) {
+    s_panel_override = s_shake_action == 3 ? 2 : -1;
     execute_panel_transition(true);
     if (s_view_swap_timer) app_timer_cancel(s_view_swap_timer);
     s_view_swap_timer = app_timer_register(7000, timer_callback, NULL);
@@ -400,26 +418,47 @@ static void sleep_dismiss_callback(void *context) {
   #endif
 }
 
+static void move_panel(Layer *panel, int target_y) {
+  if (!panel) return;
+  GRect start = layer_get_frame(panel);
+  GRect end = GRect(0, target_y, 200, 96);
+  if (start.origin.y == target_y) return;
+  PropertyAnimation *animation = property_animation_create_layer_frame(panel, &start, &end);
+  if (!animation) { layer_set_frame(panel, end); return; }
+  animation_set_duration((Animation *)animation, 300);
+  animation_set_curve((Animation *)animation, AnimationCurveEaseInOut);
+  animation_schedule((Animation *)animation);
+}
+static int active_panel(void) {
+  return s_panel_override >= 0 ? s_panel_override : s_default_view;
+}
 static void execute_panel_transition(bool alternate_view) {
-  s_view_is_swapped = alternate_view; 
-  bool display_forecast = (s_default_view == 0) ? s_view_is_swapped : !s_view_is_swapped;
-  
-  GRect health_start = layer_get_frame(s_health_container);
-  GRect forecast_start = layer_get_frame(s_forecast_container);
-  
-  GRect health_end = display_forecast ? GRect(0, 222, 200, 96) : GRect(0, 126, 200, 96);
-  GRect forecast_end = display_forecast ? GRect(0, 126, 200, 96) : GRect(0, 222, 200, 96);
-  
-  PropertyAnimation *anim_h = property_animation_create_layer_frame(s_health_container, &health_start, &health_end);
-  PropertyAnimation *anim_f = property_animation_create_layer_frame(s_forecast_container, &forecast_start, &forecast_end);
-  
-  animation_set_duration((Animation*)anim_h, 400);
-  animation_set_curve((Animation*)anim_h, AnimationCurveEaseInOut);
-  animation_set_duration((Animation*)anim_f, 400);
-  animation_set_curve((Animation*)anim_f, AnimationCurveEaseInOut);
-  
-  animation_schedule((Animation*)anim_h);
-  animation_schedule((Animation*)anim_f);
+  // Default may be Health (0), Weather (1) or Next Event (2).
+  // The original alternate for Health/Weather is preserved.
+  s_view_is_swapped = alternate_view;
+  int target = s_panel_override >= 0 ? s_panel_override :
+    (alternate_view ? (s_default_view == 0 ? 1 : 0) : s_default_view);
+  move_panel(s_health_container, target == 0 ? 126 : 222);
+  move_panel(s_forecast_container, target == 1 ? 126 : 222);
+  move_panel(s_calendar_container, target == 2 ? 126 : 222);
+}
+static void update_calendar_countdown(void) {
+  if (!s_calendar_countdown_layer) return;
+  time_t now = time(NULL);
+  if (s_calendar_status != 1 || !s_calendar_start ||
+      s_calendar_start < (uint32_t)now) {
+    if (s_calendar_status == 2) snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "Calendar unavailable");
+    else if (s_calendar_status == 1 && s_calendar_start)
+      snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "Event started");
+    else snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "No upcoming events");
+  } else {
+    uint32_t remaining = s_calendar_start - (uint32_t)now;
+    if (remaining < 60) snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "Starting now");
+    else if (remaining < 3600) snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "In %lu min", (unsigned long)((remaining + 59) / 60));
+    else if (remaining < 86400) snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "In %luh %lum", (unsigned long)(remaining / 3600), (unsigned long)((remaining % 3600) / 60));
+    else snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "In %lu days, %luh", (unsigned long)(remaining / 86400), (unsigned long)((remaining % 86400) / 3600));
+  }
+  text_layer_set_text(s_calendar_countdown_layer, s_calendar_countdown);
 }
 
 static void bluetooth_callback(bool connected) {
@@ -580,7 +619,10 @@ static void update_theme_colors() {
   text_layer_set_text_color(s_time_layer, fg_color); 
   text_layer_set_text_color(s_date_layer, fg_color); 
   text_layer_set_text_color(s_hr_layer, fg_color); 
-  text_layer_set_text_color(s_dist_layer, fg_color); 
+  text_layer_set_text_color(s_dist_layer, fg_color);
+  text_layer_set_text_color(s_calendar_label_layer, fg_color);
+  text_layer_set_text_color(s_calendar_title_layer, fg_color);
+  text_layer_set_text_color(s_calendar_countdown_layer, fg_color); 
   
   text_layer_set_text_color(s_f_day1_layer, fg_color); 
   text_layer_set_text_color(s_f_day2_layer, fg_color); 
@@ -671,6 +713,7 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   text_layer_set_text(s_f_day3_layer, d3_txt); 
   text_layer_set_text(s_f_temp3_layer, t3_txt); 
 
+  update_calendar_countdown();
   request_weather(); // Throttled according to UPDATE_FREQ and the last valid update.
   if (tick_time->tm_min % 5 == 0) layer_mark_dirty(s_weather_arc_layer); 
 
@@ -762,6 +805,26 @@ static void main_window_load(Window *window) {
   s_forecast_container = layer_create(GRect(0, initial_forecast_y, 200, 96));
   layer_add_child(w_layer, s_health_container);
   layer_add_child(w_layer, s_forecast_container);
+  s_calendar_container = layer_create(GRect(0, s_default_view == 2 ? 126 : 222, 200, 96));
+  layer_add_child(w_layer, s_calendar_container);
+  s_calendar_label_layer = text_layer_create(GRect(10, 0, 180, 22));
+  s_calendar_title_layer = text_layer_create(GRect(8, 20, 184, 49));
+  s_calendar_countdown_layer = text_layer_create(GRect(8, 69, 184, 26));
+  text_layer_set_font(s_calendar_label_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+  text_layer_set_font(s_calendar_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
+  text_layer_set_font(s_calendar_countdown_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+  text_layer_set_text_alignment(s_calendar_label_layer, GTextAlignmentCenter);
+  text_layer_set_text_alignment(s_calendar_title_layer, GTextAlignmentCenter);
+  text_layer_set_text_alignment(s_calendar_countdown_layer, GTextAlignmentCenter);
+  text_layer_set_background_color(s_calendar_label_layer, GColorClear);
+  text_layer_set_background_color(s_calendar_title_layer, GColorClear);
+  text_layer_set_background_color(s_calendar_countdown_layer, GColorClear);
+  layer_add_child(s_calendar_container, text_layer_get_layer(s_calendar_label_layer));
+  layer_add_child(s_calendar_container, text_layer_get_layer(s_calendar_title_layer));
+  layer_add_child(s_calendar_container, text_layer_get_layer(s_calendar_countdown_layer));
+  text_layer_set_text(s_calendar_label_layer, "NEXT EVENT");
+  text_layer_set_text(s_calendar_title_layer, s_calendar_title);
+  update_calendar_countdown();
 
   // CHANGED: All inner Y coordinates for health increased by 16 so they remain visually anchored where they were
   s_goals_canvas = layer_create(GRect(15, 16, 72, 72)); 
@@ -912,7 +975,11 @@ static void main_window_unload(Window *window) {
   bitmap_layer_destroy(s_f_icon3_layer); 
   
   layer_destroy(s_health_container); 
-  layer_destroy(s_forecast_container); 
+  layer_destroy(s_forecast_container);
+  text_layer_destroy(s_calendar_label_layer);
+  text_layer_destroy(s_calendar_title_layer);
+  text_layer_destroy(s_calendar_countdown_layer);
+  layer_destroy(s_calendar_container);
 }
 
 static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
@@ -972,8 +1039,17 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
       if (s_view_is_swapped) { execute_panel_transition(false); }
     }
     else if(t->key == MESSAGE_KEY_DEFAULT_VIEW) {
-      if (s_default_view != get_int(t)) { s_default_view = get_int(t); layout_changed = true; }
+      int requested = get_int(t);
+      if (requested >= 0 && requested <= 2 && s_default_view != requested) {
+        s_default_view = requested; layout_changed = true;
+      }
     }
+    else if(t->key == MESSAGE_KEY_NEXT_EVENT_TITLE && t->type == TUPLE_CSTRING) {
+      snprintf(s_calendar_title, sizeof(s_calendar_title), "%s", t->value->cstring);
+      text_layer_set_text(s_calendar_title_layer, s_calendar_title);
+    }
+    else if(t->key == MESSAGE_KEY_NEXT_EVENT_START) s_calendar_start = (uint32_t)get_int(t);
+    else if(t->key == MESSAGE_KEY_NEXT_EVENT_STATUS) s_calendar_status = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY1_HIGH) s_d1_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY1_LOW) s_d1_lo = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY1_ICON && t->type == TUPLE_CSTRING) { if(strcmp(s_d1_ic, t->value->cstring)) { snprintf(s_d1_ic, sizeof(s_d1_ic), "%s", t->value->cstring); forecast_icons_changed = true; }}
@@ -991,7 +1067,8 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
   if (weather_changed) layer_mark_dirty(s_weather_arc_layer);
   
   if (theme_changed) update_theme_colors(); 
-  if (layout_changed) execute_panel_transition(false); 
+  if (layout_changed) { s_panel_override = -1; execute_panel_transition(false); }
+  update_calendar_countdown(); 
   
   time_t now = time(NULL);
   update_time(localtime(&now), MINUTE_UNIT);
