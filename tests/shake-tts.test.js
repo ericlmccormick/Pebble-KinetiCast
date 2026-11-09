@@ -51,7 +51,7 @@ console.log('Calendar action 3 and independent gentle-flick sensitivity regressi
 
 // Diagnostic is a fifth action, reports the measured peak rather than faking
 // the configured threshold and permits below-threshold test readings.
-assert.ok(js.includes('Show Shake Strength (Test, 7 seconds)'));
+assert.ok(js.includes('Test Shake Strength'));
 assert.ok(c.includes('return s_shake_action == 4 ? 60 : s_shake_sensitivity;'));
 assert.ok(c.includes('s_shake_peak_mg = largest;'));
 assert.ok(c.includes('sample->timestamp - s_shake_test_start_ms >= 320'));
