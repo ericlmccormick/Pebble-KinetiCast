@@ -85,8 +85,8 @@ var clayConfig = [
       {
         "type": "slider", "messageKey": "SHAKE_SENSITIVITY",
         "label": "Shake Acceleration Threshold (mg)",
-        "description": "100 mg = easier to trigger; 500 mg = stronger movement required. Test mode shows the measured peak (including motions below the threshold) versus the selected threshold.",
-        "defaultValue": 290, "min": 100, "max": 500, "step": 10
+        "description": "100 mg = easier to trigger; 2600 mg = stronger movement required. Test mode shows the measured peak (including motions below the threshold) versus the selected threshold.",
+        "defaultValue": 300, "min": 100, "max": 2600, "step": 50
       },
       {
         "type": "select", "messageKey": "SHAKE_LENGTH",
@@ -383,11 +383,11 @@ function temperatureUnitId(unit) { return ['F','C','K','R'].indexOf(unit); }
 function normalizeShakeThreshold(value) {
   var n = Number(value);
   // Preserve users' old low/medium/high choices on upgrade.
-  if (n === 0) return 460;
-  if (n === 1) return 290;
-  if (n === 2) return 160;
-  if (!isFinite(n) || n < 100 || n > 500) return 290;
-  return Math.round(n / 10) * 10;
+  if (n === 0) return 450;
+  if (n === 1) return 300;
+  if (n === 2) return 150;
+  if (!isFinite(n)) return 300;
+  return Math.max(100, Math.min(2600, 100 + Math.round((n - 100) / 50) * 50));
 }
 function syncLegacyPreferences(settings) {
   settings.SHAKE_SENSITIVITY = normalizeShakeThreshold(settings.SHAKE_SENSITIVITY);
