@@ -20,14 +20,16 @@ let settings={CALENDAR_FILTER:'__all__',SHAKE_ACTION:3};
 let names=[];
 let sent=[];
 let onData;
+let subscriptions=0;
 let storage={};
 const ctx={
  console:{log(){}},Date,Math,JSON,Number,isFinite,parseInt,
  localStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>{storage[k]=v;}},
  readSettings:()=>settings,
+ settingEnabled:(value,fallback)=>value==null?fallback:Boolean(value),
  Pebble:{
   sendAppMessage:(m,ok)=>{sent.push(m);if(ok)ok();},
-  subscribeToSource:args=>{onData=args.onData;return {unsubscribe(){}};}
+  subscribeToSource:args=>{subscriptions++;onData=args.onData;return {unsubscribe(){}};}
  },
  Clay:function(config){this.config=config;},
  customClay:function(){},
@@ -58,4 +60,9 @@ ctx.sendNextCalendarEvent(true);
 assert.equal(sent.at(-1).NEXT_EVENT_STATUS,0);
 onData({instances:[{properties:{title:prop('Invalid')}}]});
 assert.equal(ctx.calendarEvents.length,2,'invalid source cannot erase events');
+ctx.startCalendarSource();
+assert.equal(subscriptions,1,'Calendar cannot re-read more than once within an hour');
+settings={CALENDAR_FILTER:'__all__',DEFAULT_VIEW:0,SHAKE_ACTION:2,PERSISTENT_CALENDAR_ENABLE:false};
+ctx.startCalendarSource();
+assert.equal(subscriptions,1,'No calendar reads when all calendar features are off');
 console.log('Calendar event selection, source filtering, and discovered dropdown tests passed');
