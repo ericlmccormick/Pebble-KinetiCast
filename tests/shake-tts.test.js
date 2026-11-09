@@ -33,7 +33,7 @@ assert.match(js,/'SHAKE_LENGTH':/);
 assert.match(c,/accel_data_service_subscribe\(5, shake_data_handler\)/);
 assert.match(c,/accel_service_set_sampling_rate\(ACCEL_SAMPLING_25HZ\)/);
 assert.match(c,/s_shake_length == 2 \? 700/);
-assert.match(c,/return s_shake_sensitivity;/);
+assert.match(c,/return s_shake_action == 4 \? 60 : s_shake_sensitivity;/);
 assert.match(c,/shake_data_handler\(AccelData \*data, uint32_t count\)/);
 
 // Regression: the watch must accept calendar action 3 in BOTH load and
@@ -51,11 +51,13 @@ console.log('Calendar action 3 and independent gentle-flick sensitivity regressi
 
 // Diagnostic is a fifth action, reports the measured peak rather than faking
 // the configured threshold and permits below-threshold test readings.
-assert.match(js,/Show Shake Strength \\(Test, 7 seconds\\)/);
-assert.match(c,/s_shake_action == 4 \\? 60 : s_shake_sensitivity/);
-assert.match(c,/s_shake_peak_mg = largest/);
-assert.match(c,/sample->timestamp - s_shake_test_start_ms >= 320/);
-assert.match(c,/show_shake_strength\\(peak\\)/);
-assert.match(c,/snprintf\\(s_shake_test_reading_buf,[\\s\\S]*?"Peak: %d mg"/);
-assert.match(c,/peak_mg >= s_shake_sensitivity \\? "ABOVE" : "BELOW"/);
-assert.match(c,/app_timer_register\\(7000, hide_shake_test_callback, NULL\\)/);
+assert.ok(js.includes('Show Shake Strength (Test, 7 seconds)'));
+assert.ok(c.includes('return s_shake_action == 4 ? 60 : s_shake_sensitivity;'));
+assert.ok(c.includes('s_shake_peak_mg = largest;'));
+assert.ok(c.includes('sample->timestamp - s_shake_test_start_ms >= 320'));
+assert.ok(c.includes('show_shake_strength(peak);'));
+assert.ok(c.includes('"Peak: %d mg"'));
+assert.ok(c.includes('peak_mg >= s_shake_sensitivity ? "ABOVE" : "BELOW"'));
+assert.ok(c.includes('app_timer_register(7000, hide_shake_test_callback, NULL)'));
+console.log('Shake strength diagnostic regression checks passed');
+
