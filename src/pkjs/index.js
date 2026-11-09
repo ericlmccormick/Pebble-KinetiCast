@@ -12,7 +12,9 @@ var clayConfig = [
       { "type": "heading", "defaultValue": "Weather Integration" },
       { "type": "text", "id": "weather-plus-hint", "defaultValue": "Weather+ manages its own forecast provider, location, temperature units and refresh cache. Configure those in the Weather+ plugin settings. KinetiCast continues to control the display and walking distance units." },
       { "type": "text", "id": "weather-plus-install", "defaultValue": "Install Weather+ from the Pebble app store for shared weather. KinetiCast will use built-in weather as a backup if the plugin is unavailable." },
-      { "type": "text", "id": "legacy-weather-hint", "defaultValue": "Your existing weather provider remains supported. Weather+ is recommended for shared weather, alerts and ongoing improvements." }, 
+      { "type": "text", "id": "legacy-weather-hint", "defaultValue": "Your existing weather provider remains supported. Weather+ is recommended for shared weather, alerts and ongoing improvements." },
+      { "type": "toggle", "messageKey": "WEATHER_UPDATES_ENABLED", "label": "Enable Weather Updates",
+        "defaultValue": true, "description": "Off stops Weather+ subscriptions and built-in forecast requests. Last saved weather remains visible but becomes stale." }, 
       { 
         "type": "select", 
         "messageKey": "WEATHER_PROVIDER", 
@@ -347,7 +349,7 @@ function powerActivitySummary(settings) {
     'live change-driven updates' : 'minute-only health updates';
   return 'ACTIVITY ESTIMATES, NOT POWER MEASUREMENTS: Gesture: '+motion+
     '. Calendar: '+cal+'. Health: '+health+
-    '. Weather: '+(chosenWeatherSource(settings)==='weatherplus'? 'shared Weather+ cache' :
+    '. Weather: '+(!weatherUpdatesEnabled(settings) ? 'OFF (saved forecast remains)' : chosenWeatherSource(settings)==='weatherplus'? 'shared Weather+ cache' :
       'built-in provider every '+(settings.UPDATE_FREQ||30)+' min')+
     '. Power in mA/mWh cannot be attributed to individual features by the public watchface APIs.';
 }
@@ -574,6 +576,7 @@ function sendWeatherData(dict) {
     weatherFinished(false, 'invalid provider temperature'); return;
   }
   Pebble.sendAppMessage(dict, function() {
+    activityCounters.weatherMessages++;
     if (activeWeatherGeneration(gen)) weatherFinished(true);
   }, function() {
     if (activeWeatherGeneration(gen)) weatherFinished(false, 'AppMessage delivery failed');
@@ -625,6 +628,7 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
     'HEALTH_LIVE_UPDATES': settingEnabled(settings.HEALTH_LIVE_UPDATES,true) ? 1 : 0,
+    'WEATHER_UPDATES_ENABLED': weatherUpdatesEnabled(settings) ? 1 : 0,
     'GESTURE_POWER_MODE': Number(settings.GESTURE_POWER_MODE||0) === 1 ? 1 : 0,
     'PERSISTENT_CALENDAR_ENABLE': settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false) ? 1 : 0,
     'PERSISTENT_CALENDAR_MINUTES': persistentCalendarMinutes(settings.PERSISTENT_CALENDAR_MINUTES),
@@ -938,6 +942,9 @@ var weatherPlusTimer = null;
 var weatherPlusLastData = 0;
 var weatherPlusStarted = 0;
 var weatherPlusLastPayload = null;
+function weatherUpdatesEnabled(settings) {
+  return settingEnabled((settings || readSettings()).WEATHER_UPDATES_ENABLED,true);
+}
 function chosenWeatherSource(settings) {
   return settings.WEATHER_PROVIDER || (settings.API_KEY ? 'openweathermap' : 'weatherplus');
 }
@@ -991,7 +998,7 @@ function weatherPlusIcon(code, condition, day) {
   return '01' + (day ? 'd' : 'n');
 }
 function applyWeatherPlus(data) {
-  if (chosenWeatherSource(readSettings()) !== 'weatherplus') return;
+  if (!weatherUpdatesEnabled() || chosenWeatherSource(readSettings()) !== 'weatherplus') return;
   var instances = data && data.instances || [];
   var props = instances[0] && instances[0].properties;
   if (!props) { console.log('KinetiCast: Weather+ missing properties'); return; }
@@ -1071,6 +1078,7 @@ function stopWeatherPlus() {
 }
 function startWeatherPlus() {
   stopWeatherPlus();
+  if (!weatherUpdatesEnabled()) return;
   weatherPlusLastData = 0;
   weatherPlusLastPayload = null;
   weatherPlusStarted = Date.now();
@@ -1102,6 +1110,7 @@ function startWeatherPlus() {
 
 function getWeather() {
   var settings = syncLegacyPreferences(readSettings());
+  if (!weatherUpdatesEnabled(settings)) return;
   var units = 'metric'; // Weather providers always speak Celsius internally.
   var provider = chosenWeatherSource(settings);
   // A healthy Weather+ subscription owns the forecast; do not poll twice.
@@ -1167,8 +1176,8 @@ function getWeather() {
 // ==============================================================================
 
 Pebble.addEventListener('ready', function() {
-  if (chosenWeatherSource(readSettings()) === 'weatherplus') startWeatherPlus();
-  else getWeather();
+  if (weatherUpdatesEnabled() && chosenWeatherSource(readSettings()) === 'weatherplus') startWeatherPlus();
+  else if (weatherUpdatesEnabled()) getWeather();
   if (calendarFeaturesEnabled()) startCalendarSource();
 });
 
@@ -1182,7 +1191,7 @@ Pebble.addEventListener('appmessage', function(e) {
     });
     return;
   }
-  if (e.payload.REQUEST_WEATHER !== undefined) getWeather();
+  if (e.payload.REQUEST_WEATHER !== undefined && weatherUpdatesEnabled()) getWeather();
 });
 
 Pebble.addEventListener('showConfiguration', function(e) {
@@ -1251,7 +1260,8 @@ Pebble.addEventListener('webviewclosed', function(e) {
   
   Pebble.sendAppMessage(appDict, function() {
     // Reopen shared weather only when provider or display units actually change.
-    var weatherChanged = chosenWeatherSource(previousSettings) !== chosenWeatherSource(settings) ||
+    var weatherChanged = weatherUpdatesEnabled(previousSettings) !== weatherUpdatesEnabled(settings) ||
+      chosenWeatherSource(previousSettings) !== chosenWeatherSource(settings) ||
       desiredTempUnit(previousSettings) !== desiredTempUnit(settings) ||
       desiredDistanceUnit(previousSettings) !== desiredDistanceUnit(settings) ||
       String(previousSettings.MANUAL_LOCATION||'') !== String(settings.MANUAL_LOCATION||'') ||
@@ -1259,8 +1269,10 @@ Pebble.addEventListener('webviewclosed', function(e) {
     if (weatherChanged) {
       lastWeatherSuccess = 0;
       stopWeatherPlus();
-      if (chosenWeatherSource(settings) === 'weatherplus') startWeatherPlus();
-      else getWeather(true);
+      if (weatherUpdatesEnabled(settings)) {
+        if (chosenWeatherSource(settings) === 'weatherplus') startWeatherPlus();
+        else getWeather(true);
+      }
     }
   }, function() { console.log('Settings delivery failed'); stopWeatherPlus(); if (chosenWeatherSource(settings) === 'weatherplus') startWeatherPlus(); else getWeather(true); });
 });
