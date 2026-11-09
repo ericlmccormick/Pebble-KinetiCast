@@ -1,0 +1,23 @@
+// Regression checks for independent shake action and Universal TTS routing.
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const c=fs.readFileSync('src/c/main.c','utf8');
+const js=fs.readFileSync('src/pkjs/index.js','utf8');
+const manifest=require('../package.json');
+assert.equal(manifest.version,'2.4.0');
+for(const key of ['COMMAND','TEXT','CHUNK','SHAKE_ACTION'])assert.ok(Number.isInteger(manifest.pebble.messageKeys[key]));
+assert.equal(new Set(Object.values(manifest.pebble.messageKeys)).size,Object.keys(manifest.pebble.messageKeys).length);
+assert.ok(manifest.pebble.usesPermissions.some(p=>p.name==='UniversalTtsSpeak'&&p.plugin==='2c5edc42-b096-4f76-b284-1f27907e6502'));
+assert.match(js,/messageKey": "DEFAULT_VIEW"/);
+assert.match(js,/messageKey": "SHAKE_ACTION"/);
+assert.match(js,/'SHAKE_ACTION': parseInt\(settings.SHAKE_ACTION, 10\) \|\| 0/);
+assert.match(js,/ttsClient\.handleMessage\(e.payload\)/);
+assert.match(js,/e.payload.COMMAND === 'SPEAK_REQUEST'/);
+assert.match(c,/PERSIST_KEY_SHAKE_ACTION 34/);
+assert.match(c,/s_shake_action = \(action >= 0 && action <= 2\) \? action : 0/);
+assert.match(c,/if \(s_shake_action == 0\)[\s\S]*?execute_panel_transition\(true\)/);
+assert.match(c,/else if \(s_shake_action == 1\)[\s\S]*?speak_local_time\(\)/);
+assert.match(c,/universal_tts_handle_message\(iter\)/);
+assert.match(c,/app_message_open\(4096, 512\)/);
+for(const f of ['src/c/universal_tts.c','src/c/universal_tts.h','src/pkjs/universal_tts.js'])assert.ok(fs.existsSync(f),f);
+console.log('Shake action / Universal TTS integration checks passed');
