@@ -155,6 +155,11 @@ static void request_weather() {
   }
 }
 
+static void shake_test_background_proc(Layer *layer, GContext *ctx) {
+  graphics_context_set_fill_color(ctx, is_dark_theme() ? GColorBlack : GColorWhite);
+  graphics_fill_rect(ctx, layer_get_bounds(layer), 0, GCornerNone);
+}
+
 static void hide_shake_test_callback(void *data) {
   (void)data;
   s_shake_test_hide_timer = NULL;
@@ -670,7 +675,7 @@ static void update_theme_colors() {
   text_layer_set_text_color(s_calendar_title_layer, fg_color);
   text_layer_set_text_color(s_calendar_countdown_layer, fg_color);
   if (s_shake_test_heading) {
-    layer_set_background_color(s_shake_test_panel, bg_color);
+    layer_mark_dirty(s_shake_test_panel);
     text_layer_set_text_color(s_shake_test_heading, fg_color);
     text_layer_set_text_color(s_shake_test_reading, fg_color);
     text_layer_set_text_color(s_shake_test_threshold, fg_color);
@@ -981,6 +986,7 @@ static void main_window_load(Window *window) {
   layer_add_child(w_layer, s_battery_layer); 
   
   s_shake_test_panel = layer_create(GRect(0, 126, 200, 96));
+  layer_set_update_proc(s_shake_test_panel, shake_test_background_proc);
   layer_add_child(w_layer, s_shake_test_panel);
   layer_set_hidden(s_shake_test_panel, true);
   s_shake_test_heading = text_layer_create(GRect(5, 0, 190, 25));
