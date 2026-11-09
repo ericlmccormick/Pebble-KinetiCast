@@ -74,8 +74,8 @@ static int s_temp_unit = 0; // F=0, C=1, K=2, R=3
 static int s_theme_mode = 0, s_default_view = 0;
 // 0: alternate panel; 1: speak clock time; 2: disabled; 3: next calendar event.
 static int s_shake_action = 0;
-// Preset 2/0 matches legacy tap responsiveness until new settings are saved.
-static int s_shake_sensitivity = 2; // 0 low, 1 medium, 2 high
+// Threshold is the change in acceleration per axis, in milligravity (mg).
+static int s_shake_sensitivity = 290; // 100-500 mg, default 290 mg
 static int s_shake_length = 0;      // 0 short, 1 medium, 2 long
 static bool s_shake_tracking = false;
 static uint64_t s_shake_first_motion_ms = 0, s_shake_last_motion_ms = 0;
@@ -213,7 +213,10 @@ static void load_weather_data() {
   }
   if (persist_exists(PERSIST_KEY_SHAKE_SENSITIVITY)) {
     int value = persist_read_int(PERSIST_KEY_SHAKE_SENSITIVITY);
-    s_shake_sensitivity = (value >= 0 && value <= 2) ? value : 2;
+    // Migration: 0=Low/460 mg, 1=Medium/290 mg, 2=High/160 mg.
+    if (value >= 0 && value <= 2)
+      value = value == 0 ? 460 : (value == 1 ? 290 : 160);
+    if (value >= 100 && value <= 500) s_shake_sensitivity = value;
   }
   if (persist_exists(PERSIST_KEY_EVENT_TITLE)) persist_read_string(PERSIST_KEY_EVENT_TITLE, s_calendar_title, sizeof(s_calendar_title));
   if (persist_exists(PERSIST_KEY_EVENT_START)) s_calendar_start = (uint32_t)persist_read_int(PERSIST_KEY_EVENT_START);
@@ -315,10 +318,10 @@ static void perform_shake_action(void) {
 // Sensor values are milligravity units; thresholds distinguish a deliberate
 // wrist flick from small changes during normal activity.
 static int shake_motion_threshold(void) {
-  return s_shake_sensitivity == 0 ? 460 : (s_shake_sensitivity == 1 ? 290 : 160);
+  return s_shake_sensitivity;
 }
 static int shake_required_events(void) {
-  return s_shake_sensitivity == 0 ? 3 : 2;
+  return s_shake_sensitivity >= 400 ? 3 : 2;
 }
 static uint32_t shake_required_duration_ms(void) {
   return s_shake_length == 2 ? 700 : (s_shake_length == 1 ? 350 : 100);
@@ -1020,8 +1023,13 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     }
     else if(t->key == MESSAGE_KEY_SHAKE_SENSITIVITY) {
       int value = get_int(t);
-      s_shake_sensitivity = (value >= 0 && value <= 2) ? value : 0;
-      reset_shake_detection();
+      // Accept old clients' 0-2 values during migration.
+      if (value >= 0 && value <= 2)
+        value = value == 0 ? 460 : (value == 1 ? 290 : 160);
+      if (value >= 100 && value <= 500) {
+        s_shake_sensitivity = value;
+        reset_shake_detection();
+      }
     }
     else if(t->key == MESSAGE_KEY_SHAKE_LENGTH) {
       int value = get_int(t);
