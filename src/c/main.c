@@ -40,6 +40,7 @@
 #define PERSIST_KEY_PERSISTENT_CALENDAR_MINUTES 41
 #define PERSIST_KEY_GESTURE_POWER_MODE 42
 #define PERSIST_KEY_HEALTH_LIVE_UPDATES 43
+#define PERSIST_KEY_WEATHER_UPDATES_ENABLED 44
 
 #define HR_HISTORY_SIZE 60 
 
@@ -92,6 +93,7 @@ static int s_shake_sensitivity = 300; // 100-2600 mg, steps of 50 mg
 static int s_gesture_power_mode = 0; // 0 continuous 25 Hz, 1 tap-armed short burst
 static AppTimer *s_gesture_burst_timer = NULL;
 static bool s_health_live_updates = true;
+static bool s_weather_updates_enabled = true;
 static int s_last_goal_steps = -1, s_last_goal_active = -1;
 static int s_shake_length = 0;      // 0 short, 1 medium, 2 long
 static bool s_shake_tracking = false;
@@ -156,6 +158,7 @@ static bool is_dark_theme() {
 }
 
 static void request_weather() {
+  if (!s_weather_updates_enabled) return;
   time_t now = time(NULL);
   if (!s_connected || (s_last_weather_request && now - s_last_weather_request < 60)) return;
   int interval = s_update_freq < 10 ? 10 : (s_update_freq > 120 ? 120 : s_update_freq);
@@ -222,6 +225,7 @@ static void save_weather_data() {
   persist_write_int(PERSIST_KEY_PERSISTENT_CALENDAR_MINUTES, s_persistent_calendar_minutes);
   persist_write_int(PERSIST_KEY_GESTURE_POWER_MODE, s_gesture_power_mode);
   persist_write_bool(PERSIST_KEY_HEALTH_LIVE_UPDATES, s_health_live_updates);
+  persist_write_bool(PERSIST_KEY_WEATHER_UPDATES_ENABLED, s_weather_updates_enabled);
   persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window);
   persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration);
   persist_write_int(PERSIST_KEY_TEMP_UNIT, s_temp_unit);
@@ -275,6 +279,8 @@ static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_EVENT_STATUS)) s_calendar_status = persist_read_int(PERSIST_KEY_EVENT_STATUS);
   if (persist_exists(PERSIST_KEY_PERSISTENT_CALENDAR))
     s_persistent_calendar_enabled = persist_read_bool(PERSIST_KEY_PERSISTENT_CALENDAR);
+  if (persist_exists(PERSIST_KEY_WEATHER_UPDATES_ENABLED))
+    s_weather_updates_enabled = persist_read_bool(PERSIST_KEY_WEATHER_UPDATES_ENABLED);
   if (persist_exists(PERSIST_KEY_HEALTH_LIVE_UPDATES))
     s_health_live_updates = persist_read_bool(PERSIST_KEY_HEALTH_LIVE_UPDATES);
   if (persist_exists(PERSIST_KEY_GESTURE_POWER_MODE)) {
@@ -1267,6 +1273,9 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
       int mode = get_int(t);
       s_gesture_power_mode = mode == 1 ? 1 : 0;
       update_shake_subscription();
+    }
+    else if(t->key == MESSAGE_KEY_WEATHER_UPDATES_ENABLED) {
+      s_weather_updates_enabled = get_int(t) != 0;
     }
     else if(t->key == MESSAGE_KEY_HEALTH_LIVE_UPDATES) {
       s_health_live_updates = get_int(t) != 0;
