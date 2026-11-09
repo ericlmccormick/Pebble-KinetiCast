@@ -38,6 +38,8 @@
 #define PERSIST_KEY_EVENT_STATUS 39
 #define PERSIST_KEY_PERSISTENT_CALENDAR 40
 #define PERSIST_KEY_PERSISTENT_CALENDAR_MINUTES 41
+#define PERSIST_KEY_GESTURE_POWER_MODE 42
+#define PERSIST_KEY_HEALTH_LIVE_UPDATES 43
 
 #define HR_HISTORY_SIZE 60 
 
@@ -65,6 +67,7 @@ static int s_calendar_status = 0;
 static bool s_persistent_calendar_enabled = false;
 static int s_persistent_calendar_minutes = 15;
 static bool s_calendar_takeover_active = false;
+static uint32_t s_calendar_next_transition = 0;
 static AppTimer *s_calendar_start_timer = NULL;
 static int s_panel_override = -1; // -1 means selected default. 
 static TextLayer *s_f_day1_layer, *s_f_day2_layer, *s_f_day3_layer; 
@@ -86,6 +89,10 @@ static int s_theme_mode = 0, s_default_view = 0;
 static int s_shake_action = 0;
 // Threshold is the change in acceleration per axis, in milligravity (mg).
 static int s_shake_sensitivity = 300; // 100-2600 mg, steps of 50 mg
+static int s_gesture_power_mode = 0; // 0 continuous 25 Hz, 1 tap-armed short burst
+static AppTimer *s_gesture_burst_timer = NULL;
+static bool s_health_live_updates = true;
+static int s_last_goal_steps = -1, s_last_goal_active = -1;
 static int s_shake_length = 0;      // 0 short, 1 medium, 2 long
 static bool s_shake_tracking = false;
 static uint64_t s_shake_first_motion_ms = 0, s_shake_last_motion_ms = 0;
@@ -118,7 +125,8 @@ static void update_health();
 static void update_theme_colors(); 
 static void execute_panel_transition(bool alternate_view);
 static void update_calendar_countdown(void);
-static void update_persistent_calendar(void); 
+static void update_persistent_calendar(void);
+static void update_shake_subscription(void); 
 static void generate_forecast_bitmaps();
 static void show_shake_strength(int peak_mg); 
 
@@ -212,6 +220,8 @@ static void save_weather_data() {
   persist_write_int(PERSIST_KEY_EVENT_STATUS, s_calendar_status);
   persist_write_bool(PERSIST_KEY_PERSISTENT_CALENDAR, s_persistent_calendar_enabled);
   persist_write_int(PERSIST_KEY_PERSISTENT_CALENDAR_MINUTES, s_persistent_calendar_minutes);
+  persist_write_int(PERSIST_KEY_GESTURE_POWER_MODE, s_gesture_power_mode);
+  persist_write_bool(PERSIST_KEY_HEALTH_LIVE_UPDATES, s_health_live_updates);
   persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window);
   persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration);
   persist_write_int(PERSIST_KEY_TEMP_UNIT, s_temp_unit);
@@ -265,6 +275,12 @@ static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_EVENT_STATUS)) s_calendar_status = persist_read_int(PERSIST_KEY_EVENT_STATUS);
   if (persist_exists(PERSIST_KEY_PERSISTENT_CALENDAR))
     s_persistent_calendar_enabled = persist_read_bool(PERSIST_KEY_PERSISTENT_CALENDAR);
+  if (persist_exists(PERSIST_KEY_HEALTH_LIVE_UPDATES))
+    s_health_live_updates = persist_read_bool(PERSIST_KEY_HEALTH_LIVE_UPDATES);
+  if (persist_exists(PERSIST_KEY_GESTURE_POWER_MODE)) {
+    int mode = persist_read_int(PERSIST_KEY_GESTURE_POWER_MODE);
+    s_gesture_power_mode = mode == 1 ? 1 : 0;
+  }
   if (persist_exists(PERSIST_KEY_PERSISTENT_CALENDAR_MINUTES)) {
     int value = persist_read_int(PERSIST_KEY_PERSISTENT_CALENDAR_MINUTES);
     if (value >= 5 && value <= 30 && value % 5 == 0) s_persistent_calendar_minutes = value;
@@ -354,11 +370,7 @@ static void perform_shake_action(void) {
     execute_panel_transition(true);
     if (s_view_swap_timer) app_timer_cancel(s_view_swap_timer);
     s_view_swap_timer = app_timer_register(7000, timer_callback, NULL);
-    request_weather();
-    update_health();
-    #if defined(PBL_HEALTH)
-    layer_mark_dirty(s_hr_graph_layer);
-    #endif
+    // Weather and health are already cached; switching panels is not a refresh request.
   } else if (s_shake_action == 1) {
     speak_local_time();
   }
@@ -444,14 +456,36 @@ static void shake_data_handler(AccelData *data, uint32_t count) {
     s_shake_has_previous = true;
   }
 }
+static void tap_armed_gesture_handler(AccelAxisType axis, int32_t direction);
 static void update_shake_subscription(void) {
+  if (s_gesture_burst_timer) { app_timer_cancel(s_gesture_burst_timer); s_gesture_burst_timer = NULL; }
+  accel_tap_service_unsubscribe();
   stop_shake_tracking();
   if (s_shake_action == 2) return;
+  if (s_gesture_power_mode == 1) {
+    accel_tap_service_subscribe(tap_armed_gesture_handler);
+    return;
+  }
   // Pebble SDK default: 25 Hz (one sample every 40 ms).
   // Batch 5 samples per callback to limit processing wakeups (~5 Hz).
   accel_service_set_sampling_rate(ACCEL_SAMPLING_25HZ);
   accel_data_service_subscribe(5, shake_data_handler);
   s_shake_tracking = true;
+}
+
+static void stop_gesture_burst(void *context) {
+  (void)context;
+  s_gesture_burst_timer = NULL;
+  if (s_gesture_power_mode == 1) stop_shake_tracking();
+}
+static void tap_armed_gesture_handler(AccelAxisType axis, int32_t direction) {
+  (void)axis;
+  (void)direction;
+  if (s_gesture_power_mode != 1 || s_shake_action == 2 || s_shake_tracking) return;
+  accel_service_set_sampling_rate(ACCEL_SAMPLING_25HZ);
+  accel_data_service_subscribe(5, shake_data_handler);
+  s_shake_tracking = true;
+  s_gesture_burst_timer = app_timer_register(2100, stop_gesture_burst, NULL);
 }
 
 static void update_daily_goals() {
@@ -522,27 +556,33 @@ static bool calendar_takeover_due_at(time_t now) {
 static void calendar_start_callback(void *context) {
   (void)context;
   s_calendar_start_timer = NULL;
+  s_calendar_next_transition = 0;
   update_persistent_calendar();
   update_calendar_countdown();
 }
 static void update_persistent_calendar(void) {
   time_t now = time(NULL);
   bool should_show = calendar_takeover_due_at(now);
-  if (s_calendar_start_timer) {
-    app_timer_cancel(s_calendar_start_timer);
-    s_calendar_start_timer = NULL;
-  }
+  uint32_t desired_transition = 0;
   if (s_persistent_calendar_enabled && s_calendar_status == 1 &&
       s_calendar_start > (uint32_t)now) {
     uint32_t remaining = s_calendar_start - (uint32_t)now;
     uint32_t lead_seconds = (uint32_t)s_persistent_calendar_minutes * 60;
-    // Schedule at the exact entry boundary, then at the exact event start.
-    // For distant events the ordinary minute tick will arm the timer later.
     uint32_t next_transition = remaining > lead_seconds ?
       remaining - lead_seconds : remaining;
     if (next_transition > 0 && next_transition <= 1800)
+      desired_transition = (uint32_t)now + next_transition;
+  }
+  // Do not cancel/recreate the same exact start/lead timer every minute.
+  if (desired_transition != s_calendar_next_transition ||
+      (desired_transition && !s_calendar_start_timer)) {
+    if (s_calendar_start_timer) app_timer_cancel(s_calendar_start_timer);
+    s_calendar_start_timer = NULL;
+    s_calendar_next_transition = desired_transition;
+    if (desired_transition)
       s_calendar_start_timer = app_timer_register(
-        next_transition * 1000, calendar_start_callback, NULL);
+        (desired_transition - (uint32_t)now) * 1000,
+        calendar_start_callback, NULL);
   }
   if (should_show == s_calendar_takeover_active) return;
   s_calendar_takeover_active = should_show;
@@ -1091,6 +1131,7 @@ static void main_window_unload(Window *window) {
   if (s_f_bmp3) gbitmap_destroy(s_f_bmp3);
   if (s_view_swap_timer) { app_timer_cancel(s_view_swap_timer); s_view_swap_timer = NULL; }
   if (s_calendar_start_timer) { app_timer_cancel(s_calendar_start_timer); s_calendar_start_timer = NULL; }
+  s_calendar_next_transition = 0;
   if (s_sleep_dismiss_timer) { app_timer_cancel(s_sleep_dismiss_timer); s_sleep_dismiss_timer = NULL; }
   if (s_shake_test_hide_timer) { app_timer_cancel(s_shake_test_hide_timer); s_shake_test_hide_timer = NULL; }
   bitmap_layer_destroy(s_weather_icon_layer);
@@ -1180,6 +1221,14 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
         reset_shake_detection();
       }
     }
+    else if(t->key == MESSAGE_KEY_GESTURE_POWER_MODE) {
+      int mode = get_int(t);
+      s_gesture_power_mode = mode == 1 ? 1 : 0;
+      update_shake_subscription();
+    }
+    else if(t->key == MESSAGE_KEY_HEALTH_LIVE_UPDATES) {
+      s_health_live_updates = get_int(t) != 0;
+    }
     else if(t->key == MESSAGE_KEY_SHAKE_LENGTH) {
       int value = get_int(t);
       s_shake_length = (value >= 0 && value <= 2) ? value : 2;
@@ -1263,6 +1312,8 @@ int main(void) {
   app_event_loop();
   tick_timer_service_unsubscribe();
   battery_state_service_unsubscribe();
+  if (s_gesture_burst_timer) app_timer_cancel(s_gesture_burst_timer);
+  accel_tap_service_unsubscribe();
   stop_shake_tracking();
   connection_service_unsubscribe();
   #if defined(PBL_HEALTH)
