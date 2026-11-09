@@ -52,6 +52,10 @@ static Layer *s_battery_layer, *s_sleep_layer, *s_hr_graph_layer;
 
 static Layer *s_health_container, *s_forecast_container, *s_calendar_container;
 static TextLayer *s_calendar_title_layer, *s_calendar_countdown_layer, *s_calendar_label_layer;
+static Layer *s_shake_test_panel = NULL;
+static TextLayer *s_shake_test_heading = NULL, *s_shake_test_reading = NULL, *s_shake_test_threshold = NULL;
+static AppTimer *s_shake_test_hide_timer = NULL;
+static char s_shake_test_reading_buf[40], s_shake_test_threshold_buf[48];
 static char s_calendar_title[72] = "";
 static char s_calendar_countdown[48] = "";
 static uint32_t s_calendar_start = 0;
@@ -81,6 +85,8 @@ static bool s_shake_tracking = false;
 static uint64_t s_shake_first_motion_ms = 0, s_shake_last_motion_ms = 0;
 static uint64_t s_shake_cooldown_until_ms = 0;
 static int s_shake_motion_events = 0;
+static int s_shake_peak_mg = 0;
+static uint64_t s_shake_test_start_ms = 0;
 static int16_t s_shake_prev_x = 0, s_shake_prev_y = 0, s_shake_prev_z = 0;
 static bool s_shake_has_previous = false; 
 static bool s_view_is_swapped = false; 
@@ -106,7 +112,8 @@ static void update_health();
 static void update_theme_colors(); 
 static void execute_panel_transition(bool alternate_view);
 static void update_calendar_countdown(void); 
-static void generate_forecast_bitmaps(); 
+static void generate_forecast_bitmaps();
+static void show_shake_strength(int peak_mg); 
 
 // ==============================================================================
 // SECTION: UTILITY & HELPER FUNCTIONS
@@ -146,6 +153,25 @@ static void request_weather() {
     dict_write_uint8(iter, MESSAGE_KEY_REQUEST_WEATHER, 1); 
     if (app_message_outbox_send() == APP_MSG_OK) s_last_weather_request = now; 
   }
+}
+
+static void hide_shake_test_callback(void *data) {
+  (void)data;
+  s_shake_test_hide_timer = NULL;
+  if (s_shake_test_panel) layer_set_hidden(s_shake_test_panel, true);
+}
+
+static void show_shake_strength(int peak_mg) {
+  if (!s_shake_test_panel) return;
+  snprintf(s_shake_test_reading_buf, sizeof(s_shake_test_reading_buf), "Peak: %d mg", peak_mg);
+  snprintf(s_shake_test_threshold_buf, sizeof(s_shake_test_threshold_buf),
+    "Set: %d mg  (%s)", s_shake_sensitivity,
+    peak_mg >= s_shake_sensitivity ? "ABOVE" : "BELOW");
+  text_layer_set_text(s_shake_test_reading, s_shake_test_reading_buf);
+  text_layer_set_text(s_shake_test_threshold, s_shake_test_threshold_buf);
+  layer_set_hidden(s_shake_test_panel, false);
+  if (s_shake_test_hide_timer) app_timer_cancel(s_shake_test_hide_timer);
+  s_shake_test_hide_timer = app_timer_register(7000, hide_shake_test_callback, NULL);
 }
 
 static void timer_callback(void *data) {
@@ -209,7 +235,7 @@ static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_DEFAULT_VIEW)) s_default_view = persist_read_int(PERSIST_KEY_DEFAULT_VIEW);
   if (persist_exists(PERSIST_KEY_SHAKE_ACTION)) {
     int action = persist_read_int(PERSIST_KEY_SHAKE_ACTION);
-    s_shake_action = (action >= 0 && action <= 3) ? action : 0;
+    s_shake_action = (action >= 0 && action <= 4) ? action : 0;
   }
   if (persist_exists(PERSIST_KEY_SHAKE_SENSITIVITY)) {
     int value = persist_read_int(PERSIST_KEY_SHAKE_SENSITIVITY);
@@ -277,6 +303,8 @@ static void reset_shake_detection(void) {
   s_shake_first_motion_ms = 0;
   s_shake_last_motion_ms = 0;
   s_shake_motion_events = 0;
+  s_shake_peak_mg = 0;
+  s_shake_test_start_ms = 0;
 }
 static void stop_shake_tracking(void) {
   if (s_shake_tracking) {
@@ -314,11 +342,12 @@ static void perform_shake_action(void) {
   }
 }
 
-// Batched 10 Hz sampling is independent of Pebble's high-force tap interrupt.
+// Batched 25 Hz sampling is independent of Pebble's high-force tap interrupt.
 // Sensor values are milligravity units; thresholds distinguish a deliberate
 // wrist flick from small changes during normal activity.
 static int shake_motion_threshold(void) {
-  return s_shake_sensitivity;
+  // Diagnostic mode recognizes motion as low as 60 mg, below user threshold.
+  return s_shake_action == 4 ? 60 : s_shake_sensitivity;
 }
 static int shake_required_events(void) {
   return s_shake_sensitivity >= 400 ? 3 : 2;
@@ -352,9 +381,27 @@ static void shake_data_handler(AccelData *data, uint32_t count) {
       int dz = shake_abs((int)sample->z - s_shake_prev_z);
       int largest = dx > dy ? dx : dy;
       if (dz > largest) largest = dz;
-      if (s_shake_last_motion_ms && sample->timestamp > s_shake_last_motion_ms + 900)
+      if (s_shake_action == 4 && largest >= 60) {
+        if (!s_shake_test_start_ms) s_shake_test_start_ms = sample->timestamp;
+        if (largest > s_shake_peak_mg) s_shake_peak_mg = largest;
+      }
+      // Measure a 320 ms window in test mode, including movements below
+      // the selected trigger threshold. Duration/event count are separate.
+      if (s_shake_action == 4 && s_shake_test_start_ms &&
+          sample->timestamp - s_shake_test_start_ms >= 320) {
+        int peak = s_shake_peak_mg;
+        s_shake_cooldown_until_ms = sample->timestamp + 1800;
         reset_shake_detection();
-      if (largest >= threshold &&
+        show_shake_strength(peak);
+        s_shake_prev_x = sample->x;
+        s_shake_prev_y = sample->y;
+        s_shake_prev_z = sample->z;
+        s_shake_has_previous = true;
+        return;
+      }
+      if (s_shake_action != 4 && s_shake_last_motion_ms && sample->timestamp > s_shake_last_motion_ms + 900)
+        reset_shake_detection();
+      if (s_shake_action != 4 && largest >= threshold &&
           (!s_shake_last_motion_ms || sample->timestamp >= s_shake_last_motion_ms + 90)) {
         if (!s_shake_first_motion_ms) s_shake_first_motion_ms = sample->timestamp;
         s_shake_last_motion_ms = sample->timestamp;
@@ -621,7 +668,13 @@ static void update_theme_colors() {
   text_layer_set_text_color(s_dist_layer, fg_color);
   text_layer_set_text_color(s_calendar_label_layer, fg_color);
   text_layer_set_text_color(s_calendar_title_layer, fg_color);
-  text_layer_set_text_color(s_calendar_countdown_layer, fg_color); 
+  text_layer_set_text_color(s_calendar_countdown_layer, fg_color);
+  if (s_shake_test_heading) {
+    layer_set_background_color(s_shake_test_panel, bg_color);
+    text_layer_set_text_color(s_shake_test_heading, fg_color);
+    text_layer_set_text_color(s_shake_test_reading, fg_color);
+    text_layer_set_text_color(s_shake_test_threshold, fg_color);
+  } 
   
   text_layer_set_text_color(s_f_day1_layer, fg_color); 
   text_layer_set_text_color(s_f_day2_layer, fg_color); 
@@ -927,6 +980,26 @@ static void main_window_load(Window *window) {
   layer_set_update_proc(s_battery_layer, battery_update_proc); 
   layer_add_child(w_layer, s_battery_layer); 
   
+  s_shake_test_panel = layer_create(GRect(0, 126, 200, 96));
+  layer_add_child(w_layer, s_shake_test_panel);
+  layer_set_hidden(s_shake_test_panel, true);
+  s_shake_test_heading = text_layer_create(GRect(5, 0, 190, 25));
+  s_shake_test_reading = text_layer_create(GRect(5, 24, 190, 35));
+  s_shake_test_threshold = text_layer_create(GRect(5, 60, 190, 30));
+  text_layer_set_font(s_shake_test_heading, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+  text_layer_set_font(s_shake_test_reading, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD));
+  text_layer_set_font(s_shake_test_threshold, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+  text_layer_set_background_color(s_shake_test_heading, GColorClear);
+  text_layer_set_background_color(s_shake_test_reading, GColorClear);
+  text_layer_set_background_color(s_shake_test_threshold, GColorClear);
+  text_layer_set_text_alignment(s_shake_test_heading, GTextAlignmentCenter);
+  text_layer_set_text_alignment(s_shake_test_reading, GTextAlignmentCenter);
+  text_layer_set_text_alignment(s_shake_test_threshold, GTextAlignmentCenter);
+  text_layer_set_text(s_shake_test_heading, "SHAKE STRENGTH TEST");
+  layer_add_child(s_shake_test_panel, text_layer_get_layer(s_shake_test_heading));
+  layer_add_child(s_shake_test_panel, text_layer_get_layer(s_shake_test_reading));
+  layer_add_child(s_shake_test_panel, text_layer_get_layer(s_shake_test_threshold));
+
   s_sleep_layer = layer_create(GRect(0, 228, 200, 54)); 
   layer_set_update_proc(s_sleep_layer, sleep_layer_update_proc); 
   layer_add_child(w_layer, s_sleep_layer); 
@@ -949,6 +1022,7 @@ static void main_window_unload(Window *window) {
   if (s_f_bmp3) gbitmap_destroy(s_f_bmp3);
   if (s_view_swap_timer) { app_timer_cancel(s_view_swap_timer); s_view_swap_timer = NULL; }
   if (s_sleep_dismiss_timer) { app_timer_cancel(s_sleep_dismiss_timer); s_sleep_dismiss_timer = NULL; }
+  if (s_shake_test_hide_timer) { app_timer_cancel(s_shake_test_hide_timer); s_shake_test_hide_timer = NULL; }
   bitmap_layer_destroy(s_weather_icon_layer);
   bitmap_layer_destroy(s_heart_layer);
   text_layer_destroy(s_time_layer);
@@ -979,6 +1053,11 @@ static void main_window_unload(Window *window) {
   text_layer_destroy(s_calendar_title_layer);
   text_layer_destroy(s_calendar_countdown_layer);
   layer_destroy(s_calendar_container);
+  text_layer_destroy(s_shake_test_heading);
+  text_layer_destroy(s_shake_test_reading);
+  text_layer_destroy(s_shake_test_threshold);
+  layer_destroy(s_shake_test_panel);
+  s_shake_test_panel = NULL;
 }
 
 static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
@@ -1038,7 +1117,8 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     }
     else if(t->key == MESSAGE_KEY_SHAKE_ACTION) {
       int action = get_int(t);
-      s_shake_action = (action >= 0 && action <= 3) ? action : 0;
+      s_shake_action = (action >= 0 && action <= 4) ? action : 0;
+      if (s_shake_test_panel) layer_set_hidden(s_shake_test_panel, true);
       update_shake_subscription();
       if (s_view_swap_timer) { app_timer_cancel(s_view_swap_timer); s_view_swap_timer = NULL; }
       if (s_view_is_swapped) { execute_panel_transition(false); }
