@@ -34,7 +34,7 @@ const ctx={
  Clay:function(config){this.config=config;},
  customClay:function(){},
  clayConfig:[{items:[{messageKey:'CALENDAR_FILTER',options:[]}]}],
- setInterval:()=>1
+ setInterval:()=>1,clearInterval:()=>{}
 };
 vm.createContext(ctx);
 vm.runInContext(source.slice(start,end),ctx);
