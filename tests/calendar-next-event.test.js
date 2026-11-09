@@ -4,7 +4,7 @@ const vm=require('node:vm');
 const source=fs.readFileSync('src/pkjs/index.js','utf8');
 const c=fs.readFileSync('src/c/main.c','utf8');
 const manifest=require('../package.json');
-assert.equal(manifest.version,'2.3.5');
+assert.equal(manifest.version,'2.3.6');
 for(const k of ['NEXT_EVENT_TITLE','NEXT_EVENT_START','NEXT_EVENT_STATUS','CALENDAR_FILTER'])assert.ok(Number.isInteger(manifest.pebble.messageKeys[k]),k);
 assert.ok(manifest.pebble.usesPermissions.includes('Calendar'),'native Calendar permission');
 assert.match(source,/category:'calendar',item:'event'/);
