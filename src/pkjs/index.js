@@ -78,13 +78,14 @@ var clayConfig = [
           { "label": "Show Other Panel (7 seconds)", "value": "0" },
           { "label": "Speak Time (Universal TTS)", "value": "1" },
           { "label": "Do Nothing", "value": "2" },
-          { "label": "Show Next Calendar Event (7 seconds)", "value": "3" }
+          { "label": "Show Next Calendar Event (7 seconds)", "value": "3" },
+          { "label": "Show Shake Strength (Test, 7 seconds)", "value": "4" }
         ]
       },
       {
         "type": "slider", "messageKey": "SHAKE_SENSITIVITY",
         "label": "Shake Acceleration Threshold (mg)",
-        "description": "100 mg = easier to trigger; 500 mg = stronger movement required.",
+        "description": "100 mg = easier to trigger; 500 mg = stronger movement required. Test mode shows the measured peak (including motions below the threshold) versus the selected threshold.",
         "defaultValue": 290, "min": 100, "max": 500, "step": 10
       },
       {
