@@ -267,6 +267,7 @@ function stopCalendarSource() {
 function startCalendarSource() {
   if (!calendarFeaturesEnabled()) {
     stopCalendarSource();
+    if (calendarTimer) { clearInterval(calendarTimer); calendarTimer=null; }
     return;
   }
   if (calendarReadPending) return;
@@ -322,6 +323,7 @@ function syncCalendarConfiguration(previous, current) {
   var was = calendarFeaturesEnabled(previous), active = calendarFeaturesEnabled(current);
   if (!active) {
     stopCalendarSource();
+    if (calendarTimer) { clearInterval(calendarTimer); calendarTimer=null; }
     calendarEvents=[];
     calendarLastSent='';
     if (was) Pebble.sendAppMessage(
