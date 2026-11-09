@@ -47,7 +47,9 @@
             "COMMAND": 33,
             "TEXT": 34,
             "CHUNK": 35,
-            "SHAKE_ACTION": 36
+            "SHAKE_ACTION": 36,
+            "SHAKE_SENSITIVITY": 37,
+            "SHAKE_LENGTH": 38
         },
         "projectType": "native",
         "resources": {
@@ -219,5 +221,5 @@
             }
         ]
     },
-    "version": "2.3.0"
+    "version": "2.3.1"
 }
