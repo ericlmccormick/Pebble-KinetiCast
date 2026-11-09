@@ -79,7 +79,7 @@ static int s_theme_mode = 0, s_default_view = 0;
 // 0: alternate panel; 1: speak clock time; 2: disabled; 3: next calendar event.
 static int s_shake_action = 0;
 // Threshold is the change in acceleration per axis, in milligravity (mg).
-static int s_shake_sensitivity = 290; // 100-500 mg, default 290 mg
+static int s_shake_sensitivity = 300; // 100-2600 mg, steps of 50 mg
 static int s_shake_length = 0;      // 0 short, 1 medium, 2 long
 static bool s_shake_tracking = false;
 static uint64_t s_shake_first_motion_ms = 0, s_shake_last_motion_ms = 0;
@@ -244,10 +244,11 @@ static void load_weather_data() {
   }
   if (persist_exists(PERSIST_KEY_SHAKE_SENSITIVITY)) {
     int value = persist_read_int(PERSIST_KEY_SHAKE_SENSITIVITY);
-    // Migration: 0=Low/460 mg, 1=Medium/290 mg, 2=High/160 mg.
+    // Migration from old presets: 0=Low/450, 1=Medium/300, 2=High/150 mg.
     if (value >= 0 && value <= 2)
-      value = value == 0 ? 460 : (value == 1 ? 290 : 160);
-    if (value >= 100 && value <= 500) s_shake_sensitivity = value;
+      value = value == 0 ? 450 : (value == 1 ? 300 : 150);
+    if (value >= 100 && value <= 2600)
+      s_shake_sensitivity = 100 + ((value - 100 + 25) / 50) * 50;
   }
   if (persist_exists(PERSIST_KEY_EVENT_TITLE)) persist_read_string(PERSIST_KEY_EVENT_TITLE, s_calendar_title, sizeof(s_calendar_title));
   if (persist_exists(PERSIST_KEY_EVENT_START)) s_calendar_start = (uint32_t)persist_read_int(PERSIST_KEY_EVENT_START);
@@ -1110,9 +1111,9 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
       int value = get_int(t);
       // Accept old clients' 0-2 values during migration.
       if (value >= 0 && value <= 2)
-        value = value == 0 ? 460 : (value == 1 ? 290 : 160);
-      if (value >= 100 && value <= 500) {
-        s_shake_sensitivity = value;
+        value = value == 0 ? 450 : (value == 1 ? 300 : 150);
+      if (value >= 100 && value <= 2600) {
+        s_shake_sensitivity = 100 + ((value - 100 + 25) / 50) * 50;
         reset_shake_detection();
       }
     }
