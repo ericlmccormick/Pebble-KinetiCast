@@ -36,6 +36,8 @@
 #define PERSIST_KEY_EVENT_TITLE 37
 #define PERSIST_KEY_EVENT_START 38
 #define PERSIST_KEY_EVENT_STATUS 39
+#define PERSIST_KEY_PERSISTENT_CALENDAR 40
+#define PERSIST_KEY_PERSISTENT_CALENDAR_MINUTES 41
 
 #define HR_HISTORY_SIZE 60 
 
@@ -60,6 +62,10 @@ static char s_calendar_title[72] = "";
 static char s_calendar_countdown[48] = "";
 static uint32_t s_calendar_start = 0;
 static int s_calendar_status = 0;
+static bool s_persistent_calendar_enabled = false;
+static int s_persistent_calendar_minutes = 15;
+static bool s_calendar_takeover_active = false;
+static AppTimer *s_calendar_start_timer = NULL;
 static int s_panel_override = -1; // -1 means selected default. 
 static TextLayer *s_f_day1_layer, *s_f_day2_layer, *s_f_day3_layer; 
 static TextLayer *s_f_temp1_layer, *s_f_temp2_layer, *s_f_temp3_layer; 
@@ -111,7 +117,8 @@ static void set_weather_icon(char *icon_code);
 static void update_health(); 
 static void update_theme_colors(); 
 static void execute_panel_transition(bool alternate_view);
-static void update_calendar_countdown(void); 
+static void update_calendar_countdown(void);
+static void update_persistent_calendar(void); 
 static void generate_forecast_bitmaps();
 static void show_shake_strength(int peak_mg); 
 
@@ -202,6 +209,8 @@ static void save_weather_data() {
   persist_write_string(PERSIST_KEY_EVENT_TITLE, s_calendar_title);
   persist_write_int(PERSIST_KEY_EVENT_START, (int)s_calendar_start);
   persist_write_int(PERSIST_KEY_EVENT_STATUS, s_calendar_status);
+  persist_write_bool(PERSIST_KEY_PERSISTENT_CALENDAR, s_persistent_calendar_enabled);
+  persist_write_int(PERSIST_KEY_PERSISTENT_CALENDAR_MINUTES, s_persistent_calendar_minutes);
   persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window);
   persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration);
   persist_write_int(PERSIST_KEY_TEMP_UNIT, s_temp_unit);
@@ -253,6 +262,12 @@ static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_EVENT_TITLE)) persist_read_string(PERSIST_KEY_EVENT_TITLE, s_calendar_title, sizeof(s_calendar_title));
   if (persist_exists(PERSIST_KEY_EVENT_START)) s_calendar_start = (uint32_t)persist_read_int(PERSIST_KEY_EVENT_START);
   if (persist_exists(PERSIST_KEY_EVENT_STATUS)) s_calendar_status = persist_read_int(PERSIST_KEY_EVENT_STATUS);
+  if (persist_exists(PERSIST_KEY_PERSISTENT_CALENDAR))
+    s_persistent_calendar_enabled = persist_read_bool(PERSIST_KEY_PERSISTENT_CALENDAR);
+  if (persist_exists(PERSIST_KEY_PERSISTENT_CALENDAR_MINUTES)) {
+    int value = persist_read_int(PERSIST_KEY_PERSISTENT_CALENDAR_MINUTES);
+    if (value >= 5 && value <= 30 && value % 5 == 0) s_persistent_calendar_minutes = value;
+  }
   if (persist_exists(PERSIST_KEY_SHAKE_LENGTH)) {
     int value = persist_read_int(PERSIST_KEY_SHAKE_LENGTH);
     s_shake_length = (value >= 0 && value <= 2) ? value : 0;
@@ -488,11 +503,48 @@ static void execute_panel_transition(bool alternate_view) {
   // Default may be Health (0), Weather (1) or Next Event (2).
   // The original alternate for Health/Weather is preserved.
   s_view_is_swapped = alternate_view;
-  int target = s_panel_override >= 0 ? s_panel_override :
-    (alternate_view ? (s_default_view == 0 ? 1 : 0) : s_default_view);
+  // Calendar takeover outranks short shake previews and restores the default at start.
+  int target = s_calendar_takeover_active ? 2 : (s_panel_override >= 0 ? s_panel_override :
+    (alternate_view ? (s_default_view == 0 ? 1 : 0) : s_default_view));
   move_panel(s_health_container, target == 0 ? 126 : 222);
   move_panel(s_forecast_container, target == 1 ? 126 : 222);
   move_panel(s_calendar_container, target == 2 ? 126 : 222);
+}
+// An active event takeover stays until its exact start time, irrespective of
+// the default panel or any temporary shake preview.
+static bool calendar_takeover_due_at(time_t now) {
+  if (!s_persistent_calendar_enabled || s_calendar_status != 1 ||
+      s_calendar_start == 0 || now < 0) return false;
+  int64_t seconds = (int64_t)s_calendar_start - (int64_t)now;
+  return seconds > 0 && seconds <= s_persistent_calendar_minutes * 60;
+}
+static void calendar_start_callback(void *context) {
+  (void)context;
+  s_calendar_start_timer = NULL;
+  update_persistent_calendar();
+  update_calendar_countdown();
+}
+static void update_persistent_calendar(void) {
+  time_t now = time(NULL);
+  bool should_show = calendar_takeover_due_at(now);
+  if (s_calendar_start_timer) {
+    app_timer_cancel(s_calendar_start_timer);
+    s_calendar_start_timer = NULL;
+  }
+  if (should_show && s_calendar_start > (uint32_t)now) {
+    uint32_t remaining = s_calendar_start - (uint32_t)now;
+    // Exact event-start refresh. A minute tick handles entering the window.
+    s_calendar_start_timer = app_timer_register(remaining * 1000, calendar_start_callback, NULL);
+  }
+  if (should_show == s_calendar_takeover_active) return;
+  s_calendar_takeover_active = should_show;
+  if (s_view_swap_timer) {
+    app_timer_cancel(s_view_swap_timer);
+    s_view_swap_timer = NULL;
+  }
+  s_panel_override = -1;
+  s_view_is_swapped = false;
+  execute_panel_transition(false);
 }
 static void update_calendar_countdown(void) {
   if (!s_calendar_countdown_layer) return;
@@ -771,6 +823,7 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   text_layer_set_text(s_f_day3_layer, d3_txt); 
   text_layer_set_text(s_f_temp3_layer, t3_txt); 
 
+  update_persistent_calendar();
   update_calendar_countdown();
   request_weather(); // Throttled according to UPDATE_FREQ and the last valid update.
   if (tick_time->tm_min % 5 == 0) layer_mark_dirty(s_weather_arc_layer); 
@@ -1028,6 +1081,7 @@ static void main_window_unload(Window *window) {
   if (s_f_bmp2) gbitmap_destroy(s_f_bmp2); 
   if (s_f_bmp3) gbitmap_destroy(s_f_bmp3);
   if (s_view_swap_timer) { app_timer_cancel(s_view_swap_timer); s_view_swap_timer = NULL; }
+  if (s_calendar_start_timer) { app_timer_cancel(s_calendar_start_timer); s_calendar_start_timer = NULL; }
   if (s_sleep_dismiss_timer) { app_timer_cancel(s_sleep_dismiss_timer); s_sleep_dismiss_timer = NULL; }
   if (s_shake_test_hide_timer) { app_timer_cancel(s_shake_test_hide_timer); s_shake_test_hide_timer = NULL; }
   bitmap_layer_destroy(s_weather_icon_layer);
@@ -1142,6 +1196,13 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     }
     else if(t->key == MESSAGE_KEY_NEXT_EVENT_START) s_calendar_start = (uint32_t)get_int(t);
     else if(t->key == MESSAGE_KEY_NEXT_EVENT_STATUS) s_calendar_status = get_int(t);
+    else if(t->key == MESSAGE_KEY_PERSISTENT_CALENDAR_ENABLE)
+      s_persistent_calendar_enabled = (get_int(t) == 1);
+    else if(t->key == MESSAGE_KEY_PERSISTENT_CALENDAR_MINUTES) {
+      int minutes = get_int(t);
+      if (minutes >= 5 && minutes <= 30 && minutes % 5 == 0)
+        s_persistent_calendar_minutes = minutes;
+    }
     else if(t->key == MESSAGE_KEY_DAY1_HIGH) s_d1_hi = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY1_LOW) s_d1_lo = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY1_ICON && t->type == TUPLE_CSTRING) { if(strcmp(s_d1_ic, t->value->cstring)) { snprintf(s_d1_ic, sizeof(s_d1_ic), "%s", t->value->cstring); forecast_icons_changed = true; }}
@@ -1160,6 +1221,7 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
   
   if (theme_changed) update_theme_colors(); 
   if (layout_changed) { s_panel_override = -1; execute_panel_transition(false); }
+  update_persistent_calendar();
   update_calendar_countdown(); 
   
   time_t now = time(NULL);
