@@ -53,7 +53,9 @@
             "NEXT_EVENT_TITLE": 39,
             "NEXT_EVENT_START": 40,
             "NEXT_EVENT_STATUS": 41,
-            "CALENDAR_FILTER": 42
+            "CALENDAR_FILTER": 42,
+            "PERSISTENT_CALENDAR_ENABLE": 43,
+            "PERSISTENT_CALENDAR_MINUTES": 44
         },
         "projectType": "native",
         "resources": {
@@ -226,5 +228,5 @@
             "Calendar"
         ]
     },
-    "version": "2.3.7"
+    "version": "2.3.8"
 }
