@@ -9,13 +9,17 @@ var clayConfig = [
   { 
     "type": "section", 
     "items": [
-      { "type": "heading", "defaultValue": "Weather Integration" }, 
+      { "type": "heading", "defaultValue": "Weather Integration" },
+      { "type": "text", "id": "weather-plus-hint", "defaultValue": "Weather+ manages its own forecast provider, location, temperature units and refresh cache. Configure those in the Weather+ plugin settings. KinetiCast continues to control the display and walking distance units." },
+      { "type": "text", "id": "weather-plus-install", "defaultValue": "Install Weather+ from the Pebble app store for shared weather. KinetiCast will use built-in weather as a backup if the plugin is unavailable." },
+      { "type": "text", "id": "legacy-weather-hint", "defaultValue": "Your existing weather provider remains supported. Weather+ is recommended for shared weather, alerts and ongoing improvements." }, 
       { 
         "type": "select", 
         "messageKey": "WEATHER_PROVIDER", 
         "label": "Weather Data Provider", 
-        "defaultValue": "auto", 
+        "defaultValue": "weatherplus", 
         "options": [
+          { "label": "Weather+ plugin (recommended)", "value": "weatherplus" },
           { "label": "Automatic (no API key, failover)", "value": "auto" },
           { "label": "Open-Meteo (Free Global Forecast)", "value": "openmeteo" }, 
           { "label": "Yr.no / Met.no (Free Global Forecast)", "value": "metno" },
@@ -630,10 +634,176 @@ function executeProviderFetch(lat, lon, units, settings) {
   fetchNamedProvider(provider, lat, lon, units, settings);
 }
 
+
+/* Weather+ is an opt-in source for existing installs, and the default for new
+ * installs. The watch's AppMessage protocol remains unchanged. */
+var WEATHER_PLUS_UUID = '7f7b6c10-93e0-4f4c-9237-7e8204c5a121';
+var weatherPlusSubscription = null;
+var weatherPlusTimer = null;
+var weatherPlusLastData = 0;
+var weatherPlusStarted = 0;
+function chosenWeatherSource(settings) {
+  return settings.WEATHER_PROVIDER || (settings.API_KEY ? 'openweathermap' : 'weatherplus');
+}
+function weatherPlusInstalled() {
+  if (typeof Pebble.enumeratePlugins !== 'function') return false;
+  try {
+    var catalog = Pebble.enumeratePlugins();
+    var entries = Array.isArray(catalog) ? catalog :
+      (catalog && (catalog.plugins || catalog.items || catalog.results)) || [];
+    return entries.some(function(p) {
+      var id = p && (p.uuid || p.pluginUuid || p.appUuid || p.id ||
+        (p.manifest && p.manifest.uuid));
+      return String(id || '').toLowerCase() === WEATHER_PLUS_UUID;
+    });
+  } catch (err) { console.log('KinetiCast: plugin enumeration failed: '+err); return false; }
+}
+function weatherPlusValues(props, key) {
+  var s = props && props[key] && props[key].series;
+  return s && s.numericValue && s.numericValue.values || [];
+}
+function weatherPlusNum(props,key) {
+  var n = props && props[key] && props[key].numericValue;
+  return n && typeof n.value === 'number' && isFinite(n.value) ? n.value : null;
+}
+function weatherPlusText(props,key) {
+  var p = props && props[key];
+  return p && ((p.shortText && p.shortText.text) || (p.longText && p.longText.text)) || '';
+}
+function weatherPlusTemperatureUnit(props) {
+  var series = props && props.daily_high && props.daily_high.series;
+  var symbol = series && series.numericValue && series.numericValue.unit || '°C';
+  if (symbol.indexOf('F') >= 0) return 'F';
+  if (symbol.indexOf('K') >= 0) return 'K';
+  if (symbol.indexOf('R') >= 0) return 'R';
+  return 'C';
+}
+function weatherPlusIcon(code, condition, day) {
+  if (typeof code === 'number' && isFinite(code)) {
+    if (code < 100) return getWmoIcon(code,day);
+    var n = Math.floor(code / 100);
+    return (n === 2 ? '11' : n === 3 ? '09' : n === 5 ?
+      '10' : n === 6 ? '13' : n === 7 ? '50' :
+      code === 800 ? '01' : code === 801 ? '02' : '04') + (day ? 'd' : 'n');
+  }
+  var text = String(condition || '').toLowerCase();
+  if (text.indexOf('snow') >= 0) return '13' + (day ? 'd' : 'n');
+  if (text.indexOf('thunder') >= 0) return '11' + (day ? 'd' : 'n');
+  if (text.indexOf('rain') >= 0) return '10' + (day ? 'd' : 'n');
+  if (text.indexOf('cloudy') >= 0) return '04' + (day ? 'd' : 'n');
+  if (text.indexOf('partly') >= 0) return '02' + (day ? 'd' : 'n');
+  return '01' + (day ? 'd' : 'n');
+}
+function applyWeatherPlus(data) {
+  if (chosenWeatherSource(readSettings()) !== 'weatherplus') return;
+  var instances = data && data.instances || [];
+  var props = instances[0] && instances[0].properties;
+  if (!props) { console.log('KinetiCast: Weather+ missing properties'); return; }
+  var hi = weatherPlusValues(props,'daily_high');
+  var lo = weatherPlusValues(props,'daily_low');
+  var codes = weatherPlusValues(props,'daily_weather_code');
+  var day = props.daily_high && props.daily_high.series;
+  var lowDay = props.daily_low && props.daily_low.series;
+  var offset = weatherPlusNum(props,'utc_offset');
+  var today = Math.floor((Date.now()/1000 + (offset || 0)*60)/86400);
+  // Weather+ anchors daily series to local midnight. Reject stale or
+  // misaligned day ranges rather than shifting today's high/low.
+  if (!day || !lowDay || day.stepSec !== 86400 || lowDay.stepSec !== 86400 ||
+      day.start !== lowDay.start ||
+      !isFinite(day.start) || !isFinite(offset) ||
+      Math.floor((day.start + offset*60)/86400) !== today ||
+      hi.length < 4 || lo.length < 4) {
+    console.log('KinetiCast: Weather+ daily range unavailable/misaligned'); return;
+  }
+  var temp = weatherPlusNum(props,'temperature');
+  var unit = weatherPlusTemperatureUnit(props);
+  var max = unit === 'F' ? 140 : unit === 'K' ? 340 : unit === 'R' ? 620 : 60;
+  var min = unit === 'F' ? -150 : unit === 'K' ? 150 : unit === 'R' ? 270 : -100;
+  var temperatures = [temp,hi[0],lo[0],hi[1],lo[1],hi[2],lo[2],hi[3],lo[3]];
+  if (temperatures.some(function(n) { return typeof n !== 'number' || !isFinite(n) || n < min || n > max; }))
+    { console.log('KinetiCast: Weather+ invalid temperature'); return; }
+  for (var i=0;i<4;i++) if (hi[i] < lo[i]) return;
+  var now = Math.floor(Date.now()/1000);
+  var stamp = props.updated_at && props.updated_at.timestamp && props.updated_at.timestamp.value;
+  if (stamp && (stamp > now+300 || now-stamp > 3*3600)) {
+    console.log('KinetiCast: Weather+ forecast timestamp stale'); return;
+  }
+  var hours = weatherPlusValues(props,'hourly_is_day');
+  var isDay = hours.length && hours[0] != null ? Number(hours[0]) !== 0 : true;
+  var currentCode = weatherPlusText(props,'condition_code');
+  var hourlyCodes = weatherPlusValues(props,'hourly_weather_code');
+  var dict = {
+    TEMP_CURRENT: Math.round(temp), TEMP_HIGH: Math.round(hi[0]), TEMP_LOW: Math.round(lo[0]),
+    DAY1_HIGH: Math.round(hi[1]), DAY1_LOW: Math.round(lo[1]),
+    DAY2_HIGH: Math.round(hi[2]), DAY2_LOW: Math.round(lo[2]),
+    DAY3_HIGH: Math.round(hi[3]), DAY3_LOW: Math.round(lo[3]),
+    CONDITIONS: weatherPlusIcon(hourlyCodes[0],currentCode,isDay),
+    DAY1_ICON: weatherPlusIcon(codes[1],null,true),
+    DAY2_ICON: weatherPlusIcon(codes[2],null,true),
+    DAY3_ICON: weatherPlusIcon(codes[3],null,true),
+    IS_NIGHT: isDay ? 0 : 1,
+    TEMP_UNIT: temperatureUnitId(unit),
+    UPDATE_FREQ: 30,
+    UNITS: desiredDistanceUnit(readSettings()) === 'km' ? 1 : 0,
+    DISTANCE_UNIT: desiredDistanceUnit(readSettings()) === 'km' ? 1 : 0,
+    SHOW_SLEEP: settingEnabled(readSettings().SHOW_SLEEP,true) ? 1 : 0,
+    THEME_MODE: parseInt(readSettings().THEME_MODE,10) || 0,
+    DEFAULT_VIEW: parseInt(readSettings().DEFAULT_VIEW,10) || 0
+  };
+  var uv = weatherPlusNum(props,'uv_index');
+  if (uv !== null && uv >= 0 && uv < 40) dict.UV_INDEX = Math.round(uv);
+  Pebble.sendAppMessage(dict,function() {
+    weatherPlusLastData = Date.now();
+    lastWeatherSuccess = weatherPlusLastData;
+  },function() { console.log('KinetiCast: Weather+ delivery failed'); });
+}
+function stopWeatherPlus() {
+  if (weatherPlusSubscription && typeof weatherPlusSubscription.unsubscribe === 'function')
+    weatherPlusSubscription.unsubscribe();
+  weatherPlusSubscription = null;
+  if (weatherPlusTimer) clearTimeout(weatherPlusTimer);
+  weatherPlusTimer = null;
+}
+function startWeatherPlus() {
+  stopWeatherPlus();
+  weatherPlusLastData = 0;
+  weatherPlusStarted = Date.now();
+  if (!weatherPlusInstalled() || typeof Pebble.subscribeToSource !== 'function') {
+    console.log('KinetiCast: Weather+ missing; retaining built-in weather backup');
+    getWeather(true,true); return;
+  }
+  try {
+    weatherPlusSubscription = Pebble.subscribeToSource({
+      category:'weather',item:'location',plugin:WEATHER_PLUS_UUID,
+      properties:['temperature','uv_index','condition_code','hourly_is_day',
+        'hourly_weather_code','daily_high','daily_low','daily_weather_code',
+        'utc_offset','updated_at'],
+      onData:applyWeatherPlus,
+      onError:function(err) {
+        console.log('KinetiCast: Weather+ source error: '+JSON.stringify(err));
+        if (Date.now()-weatherPlusLastData > 30*60000) getWeather(true,true);
+      }
+    });
+    weatherPlusTimer=setTimeout(function() {
+      weatherPlusTimer=null;
+      if (!weatherPlusLastData) getWeather(true,true);
+    },20000);
+  } catch (err) {
+    console.log('KinetiCast: Weather+ subscription failed: '+err);
+    getWeather(true,true);
+  }
+}
+
 function getWeather() {
   var settings = syncLegacyPreferences(readSettings());
   var units = 'metric'; // Weather providers always speak Celsius internally.
-  var provider = settings.WEATHER_PROVIDER || 'auto';
+  var provider = chosenWeatherSource(settings);
+  // A healthy Weather+ subscription owns the forecast; do not poll twice.
+  if (provider === 'weatherplus' && arguments[1] !== true) {
+    if (weatherPlusSubscription && Date.now()-weatherPlusLastData < 30*60000) return;
+    if (!weatherPlusSubscription) { startWeatherPlus(); return; }
+  }
+  if (provider === 'weatherplus') settings.WEATHER_PROVIDER = 'auto';
   var now = Date.now();
   if (weatherInFlight) return;
   if (arguments[0] !== true && lastWeatherSuccess && now - lastWeatherSuccess < weatherIntervalMs(settings)) return;
@@ -690,8 +860,9 @@ function getWeather() {
 // SECTION: APP EVENT HANDLERS
 // ==============================================================================
 
-Pebble.addEventListener('ready', function() { 
-  getWeather(); 
+Pebble.addEventListener('ready', function() {
+  if (chosenWeatherSource(readSettings()) === 'weatherplus') startWeatherPlus();
+  else getWeather();
 });
 
 Pebble.addEventListener('appmessage', function(e) {
@@ -706,7 +877,7 @@ Pebble.addEventListener('showConfiguration', function(e) {
     settings.WEATHER_PROVIDER = 'openweathermap';
     localStorage.setItem('clay-settings', JSON.stringify(settings));
   } else if (!settings.WEATHER_PROVIDER) {
-    settings.WEATHER_PROVIDER = 'auto';
+    settings.WEATHER_PROVIDER = 'weatherplus';
     localStorage.setItem('clay-settings', JSON.stringify(settings));
   }
   
@@ -758,6 +929,8 @@ Pebble.addEventListener('webviewclosed', function(e) {
   
   Pebble.sendAppMessage(appDict, function() {
     lastWeatherSuccess = 0;
-    getWeather(true);
-  }, function() { console.log('Settings delivery failed'); getWeather(true); });
+    stopWeatherPlus();
+    if (chosenWeatherSource(settings) === 'weatherplus') startWeatherPlus();
+    else getWeather(true);
+  }, function() { console.log('Settings delivery failed'); stopWeatherPlus(); if (chosenWeatherSource(settings) === 'weatherplus') startWeatherPlus(); else getWeather(true); });
 });
