@@ -84,3 +84,7 @@ The optional **Persistent Calendar Notification** toggle automatically changes t
 - **Power activity information:** Settings summarize theoretical sensor callback rates, calendar source read rate, weather source and live-health mode. These are workload indicators, *not* measured per-feature current draw or battery percentage. Users can disable gesture processing, live health events, calendar views/notifications, or alter weather refresh settings.
 
 **Trade-off:** Hourly calendar snapshots can miss events created or modified between refreshes. Tap-armed gestures save idle work at the expense of gentle-flick sensitivity. Neither feature's battery savings are quantified until physical watch testing.
+
+### Weather activity control
+
+The **Enable Weather Updates** toggle defaults on. Turning it off unsubscribes from Weather+, disables built-in forecast requests, and keeps the last locally saved weather values displayed (which may become stale). This allows users who prefer battery savings to stop weather traffic entirely. Turning it back on re-subscribes to Weather+ or performs a built-in weather refresh. No automatic downloads are triggered by shake panel previews.
