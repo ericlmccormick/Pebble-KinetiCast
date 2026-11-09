@@ -55,7 +55,9 @@
             "NEXT_EVENT_STATUS": 41,
             "CALENDAR_FILTER": 42,
             "PERSISTENT_CALENDAR_ENABLE": 43,
-            "PERSISTENT_CALENDAR_MINUTES": 44
+            "PERSISTENT_CALENDAR_MINUTES": 44,
+            "GESTURE_POWER_MODE": 45,
+            "HEALTH_LIVE_UPDATES": 46
         },
         "projectType": "native",
         "resources": {
@@ -228,5 +230,5 @@
             "Calendar"
         ]
     },
-    "version": "2.4.0"
+    "version": "2.4.1"
 }
