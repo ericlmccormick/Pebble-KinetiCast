@@ -532,10 +532,17 @@ static void update_persistent_calendar(void) {
     app_timer_cancel(s_calendar_start_timer);
     s_calendar_start_timer = NULL;
   }
-  if (should_show && s_calendar_start > (uint32_t)now) {
+  if (s_persistent_calendar_enabled && s_calendar_status == 1 &&
+      s_calendar_start > (uint32_t)now) {
     uint32_t remaining = s_calendar_start - (uint32_t)now;
-    // Exact event-start refresh. A minute tick handles entering the window.
-    s_calendar_start_timer = app_timer_register(remaining * 1000, calendar_start_callback, NULL);
+    uint32_t lead_seconds = (uint32_t)s_persistent_calendar_minutes * 60;
+    // Schedule at the exact entry boundary, then at the exact event start.
+    // For distant events the ordinary minute tick will arm the timer later.
+    uint32_t next_transition = remaining > lead_seconds ?
+      remaining - lead_seconds : remaining;
+    if (next_transition > 0 && next_transition <= 1800)
+      s_calendar_start_timer = app_timer_register(
+        next_transition * 1000, calendar_start_callback, NULL);
   }
   if (should_show == s_calendar_takeover_active) return;
   s_calendar_takeover_active = should_show;
