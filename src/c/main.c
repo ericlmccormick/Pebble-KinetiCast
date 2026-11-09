@@ -174,7 +174,8 @@ static void hide_shake_test_callback(void *data) {
 }
 
 static void show_shake_strength(int peak_mg) {
-  if (!s_shake_test_panel) return;
+  // An upcoming event takeover must remain visible until the event begins.
+  if (!s_shake_test_panel || s_calendar_takeover_active) return;
   snprintf(s_shake_test_reading_buf, sizeof(s_shake_test_reading_buf), "Peak: %d mg", peak_mg);
   snprintf(s_shake_test_threshold_buf, sizeof(s_shake_test_threshold_buf),
     "Set: %d mg  (%s)", s_shake_sensitivity,
@@ -348,7 +349,7 @@ static void perform_shake_action(void) {
     #endif
   }
 
-  if (s_shake_action == 0 || s_shake_action == 3) {
+  if ((s_shake_action == 0 || s_shake_action == 3) && !s_calendar_takeover_active) {
     s_panel_override = s_shake_action == 3 ? 2 : -1;
     execute_panel_transition(true);
     if (s_view_swap_timer) app_timer_cancel(s_view_swap_timer);
@@ -538,6 +539,7 @@ static void update_persistent_calendar(void) {
   }
   if (should_show == s_calendar_takeover_active) return;
   s_calendar_takeover_active = should_show;
+  if (should_show && s_shake_test_panel) layer_set_hidden(s_shake_test_panel, true);
   if (s_view_swap_timer) {
     app_timer_cancel(s_view_swap_timer);
     s_view_swap_timer = NULL;
