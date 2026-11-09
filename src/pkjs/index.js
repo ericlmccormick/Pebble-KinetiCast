@@ -82,13 +82,10 @@ var clayConfig = [
         ]
       },
       {
-        "type": "select", "messageKey": "SHAKE_SENSITIVITY",
-        "label": "Shake Sensitivity", "defaultValue": "0",
-        "options": [
-          { "label": "Low (requires stronger motion)", "value": "0" },
-          { "label": "Medium", "value": "1" },
-          { "label": "High (easier to trigger)", "value": "2" }
-        ]
+        "type": "slider", "messageKey": "SHAKE_SENSITIVITY",
+        "label": "Shake Acceleration Threshold (mg)",
+        "description": "100 mg = easier to trigger; 500 mg = stronger movement required.",
+        "defaultValue": 290, "min": 100, "max": 500, "step": 10
       },
       {
         "type": "select", "messageKey": "SHAKE_LENGTH",
@@ -99,7 +96,7 @@ var clayConfig = [
           { "label": "Long (sustained shake)", "value": "2" }
         ]
       },
-      { "type": "text", "defaultValue": "For Speak Time, start with Low sensitivity and Long duration to reduce accidental announcements. Existing saved gesture preferences are preserved. TTS requires the Universal TTS plugin and a watch speaker." },
+      { "type": "text", "defaultValue": "For Speak Time, try a higher threshold (400 mg) and Long duration to reduce accidental announcements. Existing saved gesture preferences are preserved. TTS requires the Universal TTS plugin and a watch speaker." },
       { "type": "select", "messageKey": "CALENDAR_FILTER", "label": "Next Event Calendar",
         "defaultValue": "__all__",
         "options": [ { "label": "All Calendars", "value": "__all__" } ] },
@@ -382,7 +379,17 @@ function convertCelsius(celsius, unit) {
   return Math.round(c);
 }
 function temperatureUnitId(unit) { return ['F','C','K','R'].indexOf(unit); }
+function normalizeShakeThreshold(value) {
+  var n = Number(value);
+  // Preserve users' old low/medium/high choices on upgrade.
+  if (n === 0) return 460;
+  if (n === 1) return 290;
+  if (n === 2) return 160;
+  if (!isFinite(n) || n < 100 || n > 500) return 290;
+  return Math.round(n / 10) * 10;
+}
 function syncLegacyPreferences(settings) {
+  settings.SHAKE_SENSITIVITY = normalizeShakeThreshold(settings.SHAKE_SENSITIVITY);
   if (!settings.TEMP_UNIT) settings.TEMP_UNIT = desiredTempUnit(settings);
   if (!settings.DISTANCE_UNIT) settings.DISTANCE_UNIT = desiredDistanceUnit(settings);
   return settings;
@@ -1107,7 +1114,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
     'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
     'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
     'SHAKE_ACTION': parseInt(settings.SHAKE_ACTION, 10) || 0,
-    'SHAKE_SENSITIVITY': settings.SHAKE_SENSITIVITY === undefined ? 0 : parseInt(settings.SHAKE_SENSITIVITY, 10),
+    'SHAKE_SENSITIVITY': normalizeShakeThreshold(settings.SHAKE_SENSITIVITY),
     'SHAKE_LENGTH': settings.SHAKE_LENGTH === undefined ? 2 : parseInt(settings.SHAKE_LENGTH, 10),
     'HR_GRAPH_WINDOW': parseInt(settings.HR_GRAPH_WINDOW, 10) || 20,
     'SLEEP_BRIEF_SECONDS': parseInt(settings.SLEEP_BRIEF_SECONDS, 10) || 0
