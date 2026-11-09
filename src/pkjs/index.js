@@ -5,160 +5,138 @@ var customClay = require('./custom-clay');
 // SECTION: CLAY CONFIGURATION (SETTINGS MENU)
 // ==============================================================================
 var clayConfig = [
-  { "type": "heading", "defaultValue": "KinetiCast Configuration" }, 
-  { 
-    "type": "section", 
-    "items": [
-      { "type": "heading", "defaultValue": "Weather Integration" },
-      { "type": "text", "id": "weather-plus-hint", "defaultValue": "Weather+ manages its own forecast provider, location, temperature units and refresh cache. Configure those in the Weather+ plugin settings. KinetiCast continues to control the display and walking distance units." },
-      { "type": "text", "id": "weather-plus-install", "defaultValue": "Install Weather+ from the Pebble app store for shared weather. KinetiCast will use built-in weather as a backup if the plugin is unavailable." },
-      { "type": "text", "id": "legacy-weather-hint", "defaultValue": "Your existing weather provider remains supported. Weather+ is recommended for shared weather, alerts and ongoing improvements." },
-      { "type": "toggle", "messageKey": "WEATHER_UPDATES_ENABLED", "label": "Enable Weather Updates",
-        "defaultValue": true, "description": "Off stops Weather+ subscriptions and built-in forecast requests. Last saved weather remains visible but becomes stale." }, 
-      { 
-        "type": "select", 
-        "messageKey": "WEATHER_PROVIDER", 
-        "label": "Weather Data Provider", 
-        "defaultValue": "weatherplus", 
-        "options": [
-          { "label": "Weather+ plugin (recommended)", "value": "weatherplus" },
-          { "label": "Automatic (no API key, failover)", "value": "auto" },
-          { "label": "Open-Meteo (Free Global Forecast)", "value": "openmeteo" }, 
-          { "label": "Yr.no / Met.no (Free Global Forecast)", "value": "metno" },
-          { "label": "National Weather Service (Free US Only)", "value": "nws" },
-          { "label": "OpenWeather OneCall 3.0 (API key)", "value": "openweathermap" }
-        ]
-      },
-      { "type": "input", "messageKey": "API_KEY", "label": "OpenWeather API Key" },
-      { "type": "toggle", "messageKey": "USE_GPS", "label": "Use Phone GPS", "defaultValue": true },
-      { 
-        "type": "input", 
-        "messageKey": "MANUAL_LOCATION", 
-        "label": "Manual Location",
-        "description": "Used only if GPS is disabled (e.g., Wheeling, IL)." 
-      },
-      {
-        "type": "select", "messageKey": "TEMP_UNIT",
-        "label": "Temperature", "defaultValue": "F",
-        "options": [
-          { "label": "Fahrenheit (°F)", "value": "F" },
-          { "label": "Celsius (°C)", "value": "C" },
-          { "label": "Kelvin (K)", "value": "K" },
-          { "label": "Rankine (°R)", "value": "R" }
-        ]
-      },
-      {
-        "type": "select", "messageKey": "DISTANCE_UNIT",
-        "label": "Walking Distance", "defaultValue": "mi",
-        "options": [
-          { "label": "Miles", "value": "mi" },
-          { "label": "Kilometers", "value": "km" }
-        ]
-      },
-      { "type": "slider", "messageKey": "UPDATE_FREQ", "label": "Polling Interval (Minutes)", "defaultValue": 30, "min": 10, "max": 120, "step": 5 }
-    ]
-  },
-  { 
-    "type": "section", 
-    "items": [
-      { "type": "heading", "defaultValue": "Display Customization" },
-      { 
-        "type": "select", 
-        "messageKey": "DEFAULT_VIEW", 
-        "label": "Default Lower Panel View", 
-        "defaultValue": "0", 
-        "options": [
-          { "label": "Health Panel (Activity & Vitals)", "value": "0" }, 
-          { "label": "Weather Panel (3-Day Forecast)", "value": "1" },
-          { "label": "Next Calendar Event (Countdown)", "value": "2" }
-        ]
-      },
-      {
-        "type": "select", "messageKey": "SHAKE_ACTION",
-        "label": "Shake Watch Action", "defaultValue": "0",
-        "options": [
-          { "label": "Show Other Panel (7 seconds)", "value": "0" },
-          { "label": "Speak Time (Universal TTS)", "value": "1" },
-          { "label": "Do Nothing", "value": "2" },
-          { "label": "Show Next Calendar Event (7 seconds)", "value": "3" },
-          { "label": "Show Shake Strength (Test, 7 seconds)", "value": "4" }
-        ]
-      },
-      { "type": "select", "messageKey": "GESTURE_POWER_MODE", "label": "Gesture Power Mode",
-        "description": "Continuous mode recognizes gentle flicks. Tap-Armed sleeps between strong tap interrupts but may miss gentle motions.",
-        "defaultValue": "0", "options": [
-          { "label": "Responsive (continuous 25 Hz)", "value": "0" },
-          { "label": "Battery Saver (tap-armed 25 Hz bursts)", "value": "1" }
-        ] },
-      {
-        "type": "slider", "messageKey": "SHAKE_SENSITIVITY",
-        "label": "Shake Acceleration Threshold (mg)",
-        "description": "100 mg = easier to trigger; 2600 mg = stronger movement required. Test mode shows the measured peak (including motions below the threshold) versus the selected threshold.",
-        "defaultValue": 300, "min": 100, "max": 2600, "step": 50
-      },
-      {
-        "type": "select", "messageKey": "SHAKE_LENGTH",
-        "label": "Shake Length", "defaultValue": "2",
-        "options": [
-          { "label": "Short (quick shake)", "value": "0" },
-          { "label": "Medium (about half a second)", "value": "1" },
-          { "label": "Long (sustained shake)", "value": "2" }
-        ]
-      },
-      { "type": "text", "defaultValue": "For Speak Time, try a higher threshold (400 mg) and Long duration to reduce accidental announcements. Existing saved gesture preferences are preserved. TTS requires the Universal TTS plugin and a watch speaker." },
-      { "type": "select", "messageKey": "CALENDAR_FILTER", "label": "Next Event Calendar",
-        "defaultValue": "__all__",
-        "options": [ { "label": "All Calendars", "value": "__all__" } ] },
-      { "type": "text", "defaultValue": "Calendar choices are discovered from events returned by the Pebble Calendar plugin (up to ten events in seven days); calendars with no returned events may not appear. Enable calendar access in the Pebble phone app." },
-      { "type": "toggle", "messageKey": "PERSISTENT_CALENDAR_ENABLE", "label": "Persistent Calendar Notification",
-        "defaultValue": false,
-        "description": "Automatically show the next selected-calendar event in the lower panel shortly before it starts, then restore the default panel." },
-      { "type": "select", "messageKey": "PERSISTENT_CALENDAR_MINUTES", "label": "Show Before Event",
-        "defaultValue": "15", "options": [
-          { "label": "5 minutes", "value": "5" },
-          { "label": "10 minutes", "value": "10" },
-          { "label": "15 minutes", "value": "15" },
-          { "label": "20 minutes", "value": "20" },
-          { "label": "25 minutes", "value": "25" },
-          { "label": "30 minutes", "value": "30" }
-        ] },
-      { 
-        "type": "select", 
-        "messageKey": "THEME_MODE", 
-        "label": "UI Visual Theme", 
-        "defaultValue": "0", 
-        "options": [
-          { "label": "Light Mode", "value": "0" }, 
-          { "label": "Dark Mode", "value": "1" },
-          { "label": "Auto (Solar Sync)", "value": "2" }
-        ]
-      },
-      { "type": "toggle", "messageKey": "HEALTH_LIVE_UPDATES", "label": "Live Health Updates", "defaultValue": true,
-        "description": "Off reduces heart-rate/movement redraws. Health figures refresh once per minute instead." },
-      { "type": "text", "id": "power-activity-summary",
-        "defaultValue": "Power Activity (estimates, not measured battery drain): Wrist flick enabled: ~432,000 sensor callbacks/day at 25 Hz in batches of 5. Disable with Shake Action = Do Nothing. Calendar: at most 1 source read/hour only when used; disable both calendar panel and persistent reminder. Weather+: shared cache; built-in forecast refresh uses selected interval. Health: disable Live Health Updates for minute-only display updates." },
-      { "type": "toggle", "messageKey": "SHOW_SLEEP", "label": "Display Morning Sleep Briefing", "defaultValue": true },
-      { "type": "select", "messageKey": "SLEEP_BRIEF_SECONDS",
-        "label": "Sleep Briefing Auto-Hide", "defaultValue": "0",
-        "options": [
-          { "label": "Stay until tapped", "value": "0" },
-          { "label": "15 seconds", "value": "15" },
-          { "label": "30 seconds", "value": "30" },
-          { "label": "60 seconds", "value": "60" }
-        ]
-      },
-      {
-        "type": "select", "messageKey": "HR_GRAPH_WINDOW",
-        "label": "Heart Rate Graph History", "defaultValue": "20",
-        "options": [
-          { "label": "20 minutes", "value": "20" },
-          { "label": "30 minutes", "value": "30" },
-          { "label": "60 minutes", "value": "60" }
-        ]
-      }
-    ]
-  },
-  { "type": "submit", "defaultValue": "Save Settings" } 
+  { "type": "heading", "defaultValue": "KinetiCast Settings" },
+  { "type": "section", "items": [
+    { "type": "heading", "defaultValue": "Watchface" },
+    { "type": "select", "messageKey": "DEFAULT_VIEW", "label": "Bottom Panel",
+      "defaultValue": "0", "options": [
+        { "label": "Health", "value": "0" },
+        { "label": "3-Day Weather", "value": "1" },
+        { "label": "Next Event", "value": "2" }
+      ] },
+    { "type": "select", "messageKey": "THEME_MODE", "label": "Theme",
+      "defaultValue": "0", "options": [
+        { "label": "Light", "value": "0" },
+        { "label": "Dark", "value": "1" },
+        { "label": "Automatic (day/night)", "value": "2" }
+      ] }
+  ] },
+  { "type": "section", "items": [
+    { "type": "heading", "defaultValue": "Weather" },
+    { "type": "toggle", "messageKey": "WEATHER_UPDATES_ENABLED",
+      "label": "Update Weather", "defaultValue": true,
+      "description": "Off keeps the last forecast." },
+    { "type": "select", "messageKey": "WEATHER_PROVIDER", "label": "Source",
+      "defaultValue": "weatherplus", "options": [
+        { "label": "Weather+ (shared plugin)", "value": "weatherplus" },
+        { "label": "Automatic (built-in)", "value": "auto" },
+        { "label": "Open-Meteo", "value": "openmeteo" },
+        { "label": "Met.no", "value": "metno" },
+        { "label": "NWS (US only)", "value": "nws" },
+        { "label": "OpenWeather (API key)", "value": "openweathermap" }
+      ] },
+    { "type": "text", "id": "weather-plus-hint",
+      "defaultValue": "Set location, units and provider in Weather+." },
+    { "type": "text", "id": "weather-plus-install",
+      "defaultValue": "Weather+ not installed? Install it from the Pebble store." },
+    { "type": "text", "id": "legacy-weather-hint",
+      "defaultValue": "Built-in source: configure location and refresh below." },
+    { "type": "input", "messageKey": "API_KEY", "label": "API Key" },
+    { "type": "toggle", "messageKey": "USE_GPS", "label": "Use Phone Location",
+      "defaultValue": true },
+    { "type": "input", "messageKey": "MANUAL_LOCATION", "label": "Location",
+      "description": "City, state or coordinates." },
+    { "type": "select", "messageKey": "TEMP_UNIT", "label": "Temperature",
+      "defaultValue": "F", "options": [
+        { "label": "°F — Fahrenheit", "value": "F" },
+        { "label": "°C — Celsius", "value": "C" },
+        { "label": "K — Kelvin", "value": "K" },
+        { "label": "°R — Rankine", "value": "R" }
+      ] },
+    { "type": "slider", "messageKey": "UPDATE_FREQ", "label": "Refresh (minutes)",
+      "defaultValue": 30, "min": 10, "max": 120, "step": 5 }
+  ] },
+  { "type": "section", "items": [
+    { "type": "heading", "defaultValue": "Calendar" },
+    { "type": "select", "messageKey": "CALENDAR_FILTER", "label": "Calendar",
+      "defaultValue": "__all__", "options": [
+        { "label": "All Calendars", "value": "__all__" }
+      ] },
+    { "type": "text", "id": "calendar-source-hint",
+      "defaultValue": "Calendars appear as the Pebble plugin reports events." },
+    { "type": "toggle", "messageKey": "PERSISTENT_CALENDAR_ENABLE",
+      "label": "Keep Upcoming Event Visible", "defaultValue": false,
+      "description": "Show until the event starts." },
+    { "type": "select", "messageKey": "PERSISTENT_CALENDAR_MINUTES",
+      "label": "Show Event Early", "defaultValue": "15", "options": [
+        { "label": "5 minutes", "value": "5" },
+        { "label": "10 minutes", "value": "10" },
+        { "label": "15 minutes", "value": "15" },
+        { "label": "20 minutes", "value": "20" },
+        { "label": "25 minutes", "value": "25" },
+        { "label": "30 minutes", "value": "30" }
+      ] }
+  ] },
+  { "type": "section", "items": [
+    { "type": "heading", "defaultValue": "Wrist Gestures" },
+    { "type": "select", "messageKey": "SHAKE_ACTION", "label": "On Wrist Flick",
+      "defaultValue": "0", "options": [
+        { "label": "Show Other Panel (7s)", "value": "0" },
+        { "label": "Show Next Event (7s)", "value": "3" },
+        { "label": "Speak Time (TTS)", "value": "1" },
+        { "label": "Test Shake Strength", "value": "4" },
+        { "label": "Disabled", "value": "2" }
+      ] },
+    { "type": "select", "messageKey": "GESTURE_POWER_MODE", "label": "Detection Mode",
+      "defaultValue": "0", "options": [
+        { "label": "Responsive (continuous)", "value": "0" },
+        { "label": "Battery Saver (tap-armed)", "value": "1" }
+      ] },
+    { "type": "slider", "messageKey": "SHAKE_SENSITIVITY",
+      "label": "Motion Threshold (mg)", "defaultValue": 300,
+      "min": 100, "max": 2600, "step": 50,
+      "description": "Lower = easier. Use Test Shake Strength to calibrate." },
+    { "type": "select", "messageKey": "SHAKE_LENGTH", "label": "Flick Duration",
+      "defaultValue": "2", "options": [
+        { "label": "Short (100 ms)", "value": "0" },
+        { "label": "Medium (350 ms)", "value": "1" },
+        { "label": "Long (700 ms)", "value": "2" }
+      ] },
+    { "type": "text", "id": "gesture-tts-hint",
+      "defaultValue": "Spoken time requires Universal TTS and a speaker." }
+  ] },
+  { "type": "section", "items": [
+    { "type": "heading", "defaultValue": "Health & Sleep" },
+    { "type": "select", "messageKey": "DISTANCE_UNIT", "label": "Walking Distance",
+      "defaultValue": "mi", "options": [
+        { "label": "Miles", "value": "mi" },
+        { "label": "Kilometers", "value": "km" }
+      ] },
+    { "type": "select", "messageKey": "HR_GRAPH_WINDOW", "label": "Heart Rate History",
+      "defaultValue": "20", "options": [
+        { "label": "20 minutes", "value": "20" },
+        { "label": "30 minutes", "value": "30" },
+        { "label": "60 minutes", "value": "60" }
+      ] },
+    { "type": "toggle", "messageKey": "HEALTH_LIVE_UPDATES",
+      "label": "Live Health Updates", "defaultValue": true,
+      "description": "Off refreshes the display each minute." },
+    { "type": "toggle", "messageKey": "SHOW_SLEEP",
+      "label": "Morning Sleep Summary", "defaultValue": true },
+    { "type": "select", "messageKey": "SLEEP_BRIEF_SECONDS", "label": "Hide Sleep Summary",
+      "defaultValue": "0", "options": [
+        { "label": "On Tap", "value": "0" },
+        { "label": "After 15 seconds", "value": "15" },
+        { "label": "After 30 seconds", "value": "30" },
+        { "label": "After 60 seconds", "value": "60" }
+      ] }
+  ] },
+  { "type": "section", "items": [
+    { "type": "heading", "defaultValue": "Power & Diagnostics" },
+    { "type": "text", "id": "power-activity-summary",
+      "defaultValue": "Activity estimates appear here. Per-feature battery drain is not measurable." }
+  ] },
+  { "type": "submit", "defaultValue": "Save Settings" }
 ];
 
 var clay = new Clay(clayConfig, customClay, { autoHandleEvents: false });
