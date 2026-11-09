@@ -373,6 +373,7 @@ static void perform_shake_action(void) {
 
   if ((s_shake_action == 0 || s_shake_action == 3) && !s_calendar_takeover_active) {
     s_panel_override = s_shake_action == 3 ? 2 : -1;
+    if (s_panel_override == 2) update_calendar_countdown();
     execute_panel_transition(true);
     if (s_view_swap_timer) app_timer_cancel(s_view_swap_timer);
     s_view_swap_timer = app_timer_register(7000, timer_callback, NULL);
@@ -603,6 +604,8 @@ static void update_persistent_calendar(void) {
 }
 static void update_calendar_countdown(void) {
   if (!s_calendar_countdown_layer) return;
+  if (!s_calendar_takeover_active && s_default_view != 2 &&
+      s_panel_override != 2) return;
   time_t now = time(NULL);
   if (s_calendar_status != 1 || !s_calendar_start ||
       s_calendar_start < (uint32_t)now) {
@@ -855,9 +858,13 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   snprintf(s_time_buf, sizeof(s_time_buf), clock_is_24h_style() ? "%02d:%02d" : "%d:%02d", hour, tick_time->tm_min);
   text_layer_set_text(s_time_layer, s_time_buf); 
   
-  static char d_buf[16]; 
-  strftime(d_buf, sizeof(d_buf), "%a, %b %d", tick_time); 
-  text_layer_set_text(s_date_layer, d_buf); 
+  static char d_buf[16];
+  static int last_date_yday = -1;
+  if (tick_time->tm_yday != last_date_yday) {
+    last_date_yday = tick_time->tm_yday;
+    strftime(d_buf, sizeof(d_buf), "%a, %b %d", tick_time);
+    text_layer_set_text(s_date_layer, d_buf);
+  }
   
   // Forecast labels change only when local date, units or forecast values change.
   static int last_forecast_day = -1, last_forecast_unit = -1;
@@ -897,7 +904,7 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   update_persistent_calendar();
   update_calendar_countdown();
   request_weather(); // Throttled according to UPDATE_FREQ and the last valid update.
-  if (tick_time->tm_min % 5 == 0) layer_mark_dirty(s_weather_arc_layer); 
+  // No periodic redraw: weather/theme updates invalidate the weather arc. 
 
   #if defined(PBL_HEALTH)
   if (tick_time->tm_hour == 0 && tick_time->tm_min == 0) { 
