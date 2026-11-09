@@ -1,6 +1,16 @@
 module.exports = function() {
   var page = this;
   page.on(page.EVENTS.AFTER_BUILD, function() {
+    var persistent = page.getItemByMessageKey('PERSISTENT_CALENDAR_ENABLE');
+    var leadTime = page.getItemByMessageKey('PERSISTENT_CALENDAR_MINUTES');
+    if (persistent && leadTime) {
+      function updateCalendarLeadVisibility() {
+        if (persistent.get()) leadTime.show();
+        else leadTime.hide();
+      }
+      updateCalendarLeadVisibility();
+      persistent.on('change', updateCalendarLeadVisibility);
+    }
     var source = page.getItemByMessageKey('WEATHER_PROVIDER');
     if (!source) return;
     var legacyKeys = ['API_KEY','USE_GPS','MANUAL_LOCATION','TEMP_UNIT','UPDATE_FREQ'];
