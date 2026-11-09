@@ -6,7 +6,7 @@ const source = fs.readFileSync('src/pkjs/index.js','utf8');
 const native = fs.readFileSync('src/c/main.c','utf8');
 const manifest = require('../package.json');
 const customClay = require('../src/pkjs/custom-clay');
-assert.equal(manifest.version, '2.3.8');
+assert.equal(manifest.version, '2.4.0');
 assert.equal(manifest.pebble.messageKeys.PERSISTENT_CALENDAR_ENABLE,43);
 assert.equal(manifest.pebble.messageKeys.PERSISTENT_CALENDAR_MINUTES,44);
 
