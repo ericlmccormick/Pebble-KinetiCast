@@ -82,6 +82,12 @@ var clayConfig = [
           { "label": "Show Shake Strength (Test, 7 seconds)", "value": "4" }
         ]
       },
+      { "type": "select", "messageKey": "GESTURE_POWER_MODE", "label": "Gesture Power Mode",
+        "description": "Continuous mode recognizes gentle flicks. Tap-Armed sleeps between strong tap interrupts but may miss gentle motions.",
+        "defaultValue": "0", "options": [
+          { "label": "Responsive (continuous 25 Hz)", "value": "0" },
+          { "label": "Battery Saver (tap-armed 25 Hz bursts)", "value": "1" }
+        ] },
       {
         "type": "slider", "messageKey": "SHAKE_SENSITIVITY",
         "label": "Shake Acceleration Threshold (mg)",
@@ -296,6 +302,9 @@ function startCalendarSource() {
         if (!calendarEvents.length)sendNextCalendarEvent(false);
       }
     });
+    // Some plugin hosts call onData synchronously during subscription setup.
+    // Ensure the completed one-shot subscription is released in that case.
+    if (!calendarReadPending) stopCalendarSource();
   } catch(err) {
     calendarState='failed';
     stopCalendarSource();
@@ -327,6 +336,21 @@ function syncCalendarConfiguration(previous, current) {
     sendNextCalendarEvent(false);
   }
 }
+function powerActivitySummary(settings) {
+  var gestureOff = Number(settings.SHAKE_ACTION||0) === 2;
+  var batteryGesture = Number(settings.GESTURE_POWER_MODE||0) === 1;
+  var motion = gestureOff ? 'OFF (0 continuous samples)' : batteryGesture ?
+    'TAP-ARMED (25 Hz for ~2.1s after an interrupt)' :
+    'CONTINUOUS (25 samples/sec; ~432,000 batches/day)';
+  var cal = calendarFeaturesEnabled(settings) ? 'up to 1 source read/hour; next event only' : 'OFF';
+  var health = settingEnabled(settings.HEALTH_LIVE_UPDATES,true) ?
+    'live change-driven updates' : 'minute-only health updates';
+  return 'ACTIVITY ESTIMATES, NOT POWER MEASUREMENTS: Gesture: '+motion+
+    '. Calendar: '+cal+'. Health: '+health+
+    '. Weather: '+(chosenWeatherSource(settings)==='weatherplus'? 'shared Weather+ cache' :
+      'built-in provider every '+(settings.UPDATE_FREQ||30)+' min')+
+    '. Power in mA/mWh cannot be attributed to individual features by the public watchface APIs.';
+}
 function updateCalendarSelectOptions(){
   var names=calendarNames(),chosen=String(readSettings().CALENDAR_FILTER||'__all__');
   var opts=[{label:'All Calendars',value:'__all__'}];
@@ -335,6 +359,7 @@ function updateCalendarSelectOptions(){
   clayConfig.forEach(function(section){
     (section.items||[]).forEach(function(item){
       if(item.messageKey==='CALENDAR_FILTER')item.options=opts;
+      if(item.id==='power-activity-summary')item.defaultValue=powerActivitySummary(readSettings());
     });
   });
   // Refresh Clay's select widget from the current discovered calendar names.
@@ -600,6 +625,7 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
     'HEALTH_LIVE_UPDATES': settingEnabled(settings.HEALTH_LIVE_UPDATES,true) ? 1 : 0,
+    'GESTURE_POWER_MODE': Number(settings.GESTURE_POWER_MODE||0) === 1 ? 1 : 0,
     'PERSISTENT_CALENDAR_ENABLE': settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false) ? 1 : 0,
     'PERSISTENT_CALENDAR_MINUTES': persistentCalendarMinutes(settings.PERSISTENT_CALENDAR_MINUTES),
         'DAY1_HIGH': json.daily.temperature_2m_max[1],
