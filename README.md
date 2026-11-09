@@ -2,7 +2,7 @@
 
 Pebble Time 2 watchface combining clock, weather and health information.
 
-**Current source version:** 2.3.4 (see `package.json`). **Target:** Emery / Pebble Time 2.
+**Current source version:** 2.3.5 (see `package.json`). **Target:** Emery / Pebble Time 2.
 
 ## Features and setup
 
@@ -40,3 +40,7 @@ Report issues with the app version, watch model, provider, and steps to reproduc
 ## v2.3.4 — SDK-default accelerometer sampling
 
 Changed gesture polling from 10 Hz (100 ms/sample) to the Pebble SDK default of **25 Hz (40 ms/sample)**, batching five samples per callback (~200 ms per batch). Low, Medium, and High sensitivity remain independent thresholds on the maximum per-axis change between adjacent acceleration samples (460, 290, and 160 milligravity, respectively). Low requires three qualifying motion impulses; Medium and High require two. These numbers are tuning starting points, not Pebble system gesture classifications. Short, Medium, and Long continue to require 100, 350, and 700 ms of qualifying motion. Continuous sampling may affect battery life; validate on watch.
+
+## v2.3.5 — Adjustable acceleration threshold
+
+Replaced the three fixed Low/Medium/High shake sensitivity presets with a phone-settings **100–500 mg slider**, in 10 mg increments (default 290 mg). Lower values trigger on gentler movement; higher values require stronger movement. The threshold measures the maximum per-axis acceleration change between consecutive 25 Hz samples, not absolute wrist acceleration. The separate Short/Medium/Long duration control remains unchanged. Existing preset values migrate automatically: Low→460 mg, Medium→290 mg, High→160 mg. Users' panel actions and other settings are preserved.
