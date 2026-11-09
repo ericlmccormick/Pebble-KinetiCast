@@ -140,6 +140,125 @@ var clayConfig = [
 ];
 
 var clay = new Clay(clayConfig, customClay, { autoHandleEvents: false });
+var calendarSubscription = null;
+var calendarEvents = [];
+var calendarState = 'pending';
+var calendarLastSent = '';
+var calendarTimer = null;
+var CALENDAR_NAMES_KEY = 'kineticast.calendar.names.v1';
+function calendarProperty(p, fields) {
+  for (var i=0;i<fields.length;i++) {
+    var v=p && p[fields[i]];
+    if (v==null) continue;
+    if (typeof v==='string'||typeof v==='number') return v;
+    if (v.timestamp && v.timestamp.value!=null) return v.timestamp.value;
+    if (v.longText && v.longText.text!=null) return v.longText.text;
+    if (v.shortText && v.shortText.text!=null) return v.shortText.text;
+    if (v.numericValue && v.numericValue.value!=null) return v.numericValue.value;
+    if (v.boolean && v.boolean.value!=null) return v.boolean.value;
+  }
+  return null;
+}
+function calendarTimestamp(raw) {
+  if(raw==null||raw==='')return NaN;
+  var num=Number(raw);
+  if(isFinite(num))return num<100000000000?num*1000:num;
+  return Date.parse(String(raw));
+}
+function calendarNames() {
+  try { var arr=JSON.parse(localStorage.getItem(CALENDAR_NAMES_KEY)||'[]');
+    return Array.isArray(arr)?arr.filter(function(n){return typeof n==='string' && !!n;}).slice(0,100):[];
+  } catch(e) { return []; }
+}
+function updateKnownCalendars(events) {
+  var names=calendarNames();
+  events.forEach(function(ev){if(ev.calendarName&&names.indexOf(ev.calendarName)<0)names.push(ev.calendarName);});
+  names.sort(function(a,b){return a.localeCompare(b);});
+  try{localStorage.setItem(CALENDAR_NAMES_KEY,JSON.stringify(names.slice(0,100)));}catch(e){}
+}
+function parseCalendarEvents(envelope) {
+  if(!envelope||!Array.isArray(envelope.instances))return null;
+  var result=[];
+  envelope.instances.forEach(function(instance) {
+    var props=instance && instance.properties || {};
+    var title=calendarProperty(props,['title','summary','name']);
+    var when=calendarTimestamp(calendarProperty(props,['starts_at','start','start_time','startTime','start_date','startDate','time','timestamp']));
+    var end=calendarTimestamp(calendarProperty(props,['ends_at','end','end_time','endTime','end_date','endDate']));
+    var calendar=calendarProperty(props,['calendar','calendar_name']);
+    var allday=calendarProperty(props,['all_day','allDay','isAllDay']);
+    if(!title||!isFinite(when)||when<=0)return;
+    // Treat UTC-midnight date markers for all-day entries as local midnight.
+    if(allday) {
+      var d=new Date(when);
+      if(d.getUTCHours()===0&&d.getUTCMinutes()===0&&d.getUTCSeconds()===0)
+        when=new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()).getTime();
+    }
+    result.push({title:String(title),start:when,end:isFinite(end)?end:when,
+      calendarName:String(calendar||'')});
+  });
+  if(envelope.instances.length&&!result.length)return null;
+  result.sort(function(a,b){return a.start-b.start;});
+  return result;
+}
+function nextCalendarEvent() {
+  var now=Date.now();
+  var filter=String(readSettings().CALENDAR_FILTER||'__all__');
+  for(var i=0;i<calendarEvents.length;i++){
+    var event=calendarEvents[i];
+    if(event.start>now && (filter==='__all__'||event.calendarName===filter))return event;
+  }
+  return null;
+}
+function sendNextCalendarEvent(force) {
+  var ev=nextCalendarEvent();
+  var msg=ev?{NEXT_EVENT_TITLE:ev.title.slice(0,65),
+    NEXT_EVENT_START:Math.floor(ev.start/1000),NEXT_EVENT_STATUS:1}:
+    {NEXT_EVENT_TITLE:'',NEXT_EVENT_START:0,NEXT_EVENT_STATUS:calendarState==='failed'?2:0};
+  var sig=JSON.stringify(msg);
+  if(!force && sig===calendarLastSent)return;
+  Pebble.sendAppMessage(msg,function(){calendarLastSent=sig;},function(err){
+    console.log('KinetiCast: calendar update delivery failed '+JSON.stringify(err));
+  });
+}
+function startCalendarSource() {
+  if(calendarSubscription)return;
+  if(typeof Pebble.subscribeToSource!=='function') {
+    calendarState='failed';sendNextCalendarEvent(true);return;
+  }
+  try{
+    calendarSubscription=Pebble.subscribeToSource({
+      category:'calendar',item:'event',
+      onData:function(envelope){
+        var parsed=parseCalendarEvents(envelope);
+        if(parsed===null){console.log('KinetiCast: invalid calendar response ignored');return;}
+        calendarEvents=parsed;
+        updateKnownCalendars(parsed);
+        calendarState='ready';
+        sendNextCalendarEvent(true);
+      },
+      onError:function(err){
+        console.log('KinetiCast: calendar plugin unavailable '+JSON.stringify(err));
+        calendarState='failed';
+        if(!calendarEvents.length)sendNextCalendarEvent(true);
+      }
+    });
+  }catch(err){calendarState='failed';console.log('KinetiCast calendar error: '+err);
+    if(!calendarEvents.length)sendNextCalendarEvent(true);}
+  if(!calendarTimer)calendarTimer=setInterval(function(){sendNextCalendarEvent(false);},60000);
+}
+function updateCalendarSelectOptions(){
+  var names=calendarNames(),chosen=String(readSettings().CALENDAR_FILTER||'__all__');
+  var opts=[{label:'All Calendars',value:'__all__'}];
+  names.forEach(function(n){opts.push({label:n,value:n});});
+  if(chosen!=='__all__'&&names.indexOf(chosen)<0)opts.push({label:chosen+' (not currently reported)',value:chosen});
+  clayConfig.forEach(function(section){
+    (section.items||[]).forEach(function(item){
+      if(item.messageKey==='CALENDAR_FILTER')item.options=opts;
+    });
+  });
+  // Refresh Clay's select widget from the current discovered calendar names.
+  clay=new Clay(clayConfig,customClay,{autoHandleEvents:false});
+}
 var ttsClient = null;
 function getTtsClient() {
   if (ttsClient) return ttsClient;
@@ -915,6 +1034,7 @@ function getWeather() {
 Pebble.addEventListener('ready', function() {
   if (chosenWeatherSource(readSettings()) === 'weatherplus') startWeatherPlus();
   else getWeather();
+  startCalendarSource();
 });
 
 Pebble.addEventListener('appmessage', function(e) {
@@ -942,6 +1062,7 @@ Pebble.addEventListener('showConfiguration', function(e) {
     localStorage.setItem('clay-settings', JSON.stringify(settings));
   }
   
+  updateCalendarSelectOptions();
   Pebble.openURL(clay.generateUrl());
 });
 
@@ -974,6 +1095,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
 
   // Save the string-keyed configuration back to memory
   localStorage.setItem('clay-settings', JSON.stringify(syncLegacyPreferences(settings)));
+  sendNextCalendarEvent(true);
 
   // Build the numerical dictionary the watch's C code is expecting
   var appDict = {
