@@ -16,7 +16,8 @@ const context={
   getWmoIcon:(n,d)=>n===0?(d?'01d':'01n'):'04d',
   Pebble:{sendAppMessage:(d,ok)=>{sent.push(d);if(ok)ok();}},
   setTimeout:()=>1,clearTimeout:()=>{},getWeather:()=>{},
-  lastWeatherSuccess:0
+  lastWeatherSuccess:0,
+  activityCounters:{calendarReads:0,calendarMessages:0,weatherMessages:0}
 };
 vm.createContext(context);
 vm.runInContext(code.slice(start,end),context);
