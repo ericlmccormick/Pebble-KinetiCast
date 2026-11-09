@@ -9,7 +9,7 @@ for(const k of ['NEXT_EVENT_TITLE','NEXT_EVENT_START','NEXT_EVENT_STATUS','CALEN
 assert.ok(manifest.pebble.usesPermissions.includes('Calendar'),'native Calendar permission');
 assert.match(source,/category:'calendar',item:'event'/);
 assert.match(source,/messageKey": "CALENDAR_FILTER"/);
-assert.match(source,/Show Next Calendar Event \(7 seconds\)/);
+assert.match(source,/Show Next Event \(7s\)/);
 assert.match(c,/s_default_view == 2 \? 126 : 222/);
 assert.match(c,/MESSAGE_KEY_NEXT_EVENT_START/);
 assert.match(c,/update_calendar_countdown\(void\)/);
