@@ -72,3 +72,10 @@ assert.match(c, /if \(!s_health_live_updates\) return;/);
 assert.match(c, /bool labels_changed/);
 assert.match(c, /if \(graph_changed\) layer_mark_dirty\(s_hr_graph_layer\)/);
 assert.match(c, /if \(strcmp\(hr_value, s_hr_buf\) != 0\)/);
+
+assert.equal(manifest.pebble.messageKeys.GESTURE_POWER_MODE,45);
+assert.equal(manifest.pebble.messageKeys.HEALTH_LIVE_UPDATES,46);
+assert.equal(manifest.pebble.messageKeys.WEATHER_UPDATES_ENABLED,47);
+assert.match(js, /messageKey": "WEATHER_UPDATES_ENABLED"/);
+assert.match(c, /if \(!s_weather_updates_enabled\) return;/);
+assert.match(c, /PERSIST_KEY_WEATHER_UPDATES_ENABLED/);
