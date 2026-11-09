@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const c=fs.readFileSync('src/c/main.c','utf8');
 const js=fs.readFileSync('src/pkjs/index.js','utf8');
 const manifest=require('../package.json');
-assert.equal(manifest.version,'2.3.2');
+assert.equal(manifest.version,'2.3.3');
 for(const key of ['COMMAND','TEXT','CHUNK','SHAKE_ACTION','SHAKE_SENSITIVITY','SHAKE_LENGTH'])assert.ok(Number.isInteger(manifest.pebble.messageKeys[key]));
 assert.equal(new Set(Object.values(manifest.pebble.messageKeys)).size,Object.keys(manifest.pebble.messageKeys).length);
 assert.ok(manifest.pebble.usesPermissions.some(p=>p.name==='UniversalTtsSpeak'&&p.plugin==='2c5edc42-b096-4f76-b284-1f27907e6502'));
@@ -26,8 +26,21 @@ assert.match(js,/messageKey": "SHAKE_SENSITIVITY"/);
 assert.match(js,/messageKey": "SHAKE_LENGTH"/);
 assert.match(js,/'SHAKE_SENSITIVITY':/);
 assert.match(js,/'SHAKE_LENGTH':/);
-assert.match(c,/accel_data_service_subscribe\(5, shake_data_handler\)/);
-assert.match(c,/accel_service_set_sampling_rate\(ACCEL_SAMPLING_25HZ\)/);
-assert.match(c,/s_shake_length == 2 \? 850/);
-assert.match(c,/s_shake_sensitivity == 0 \? 720/);
+assert.match(c,/accel_data_service_subscribe\(4, shake_data_handler\)/);
+assert.match(c,/accel_service_set_sampling_rate\(ACCEL_SAMPLING_10HZ\)/);
+assert.match(c,/s_shake_length == 2 \? 700/);
+assert.match(c,/s_shake_sensitivity == 0 \? 460/);
 assert.match(c,/shake_data_handler\(AccelData \*data, uint32_t count\)/);
+
+// Regression: the watch must accept calendar action 3 in BOTH load and
+// live settings paths. Previously the inbox silently reset it to action 0.
+const cases=Array.from(c.matchAll(/s_shake_action = \(action >= 0 && action <= 3\) \? action : 0/g));
+assert.equal(cases.length,2,'Persisted and incoming shake action must accept 3');
+assert.match(c,/s_panel_override = s_shake_action == 3 \? 2 : -1/);
+assert.match(c,/if \(s_shake_action == 0 \|\| s_shake_action == 3\)/);
+assert.match(c,/update_shake_subscription\(void\)/);
+assert.match(c,/s_shake_sensitivity == 0 \? 3 : 2/);
+assert.match(c,/s_shake_length == 2 \? 700 : \(s_shake_length == 1 \? 350 : 100\)/);
+assert.doesNotMatch(c,/accel_tap_service_subscribe\(/,'No tap-gated gesture detector');
+assert.doesNotMatch(c,/s_shake_timeout_timer/,'No tap-gated two-second window');
+console.log('Calendar action 3 and independent gentle-flick sensitivity regression checks passed');
