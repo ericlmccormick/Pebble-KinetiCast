@@ -43,7 +43,11 @@
             "HR_GRAPH_WINDOW": 29,
             "SLEEP_BRIEF_SECONDS": 30,
             "TEMP_UNIT": 31,
-            "DISTANCE_UNIT": 32
+            "DISTANCE_UNIT": 32,
+            "COMMAND": 33,
+            "TEXT": 34,
+            "CHUNK": 35,
+            "SHAKE_ACTION": 36
         },
         "projectType": "native",
         "resources": {
@@ -202,7 +206,18 @@
         "uuid": "7f3f1294-e524-4050-bc8b-60248df17363",
         "watchapp": {
             "watchface": true
-        }
+        },
+        "manifestVersion": 2,
+        "usesPermissions": [
+            {
+                "name": "InvokeAction",
+                "plugin": "2c5edc42-b096-4f76-b284-1f27907e6502"
+            },
+            {
+                "name": "UniversalTtsSpeak",
+                "plugin": "2c5edc42-b096-4f76-b284-1f27907e6502"
+            }
+        ]
     },
-    "version": "2.3.0"
+    "version": "2.4.0"
 }
