@@ -2,7 +2,7 @@
 
 Pebble Time 2 watchface combining clock, weather and health information.
 
-**Current source version:** 2.4.1 (see `package.json`). **Target:** Emery / Pebble Time 2.
+**Current source version:** 2.4.2 (see `package.json`). **Target:** Emery / Pebble Time 2.
 
 ## v2.4.0 — Calendar, voice and gesture upgrades
 
@@ -88,3 +88,7 @@ The optional **Persistent Calendar Notification** toggle automatically changes t
 ### Weather activity control
 
 The **Enable Weather Updates** toggle defaults on. Turning it off unsubscribes from Weather+, disables built-in forecast requests, and keeps the last locally saved weather values displayed (which may become stale). This allows users who prefer battery savings to stop weather traffic entirely. Turning it back on re-subscribes to Weather+ or performs a built-in weather refresh. No automatic downloads are triggered by shake panel previews.
+
+## v2.4.2 — Settings refresh
+
+Reorganized the phone configuration into **Watchface**, **Weather**, **Calendar**, **Wrist Gestures**, **Health & Sleep**, and **Power & Diagnostics**. Reduced descriptive text, moved each option beside its related control, and reordered dropdowns logically (especially wrist actions, theme, weather providers and sleep timeout). Unneeded fields now hide automatically based on the provider, weather enable switch, calendar features, gesture action, GPS mode and sleep-summary switch. Settings keys, saved values, defaults and service behavior remain compatible with v2.4.1.
