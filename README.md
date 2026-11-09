@@ -2,7 +2,21 @@
 
 Pebble Time 2 watchface combining clock, weather and health information.
 
-**Current source version:** 2.3.8 (see `package.json`). **Target:** Emery / Pebble Time 2.
+**Current source version:** 2.4.0 (see `package.json`). **Target:** Emery / Pebble Time 2.
+
+## v2.4.0 — Calendar, voice and gesture upgrades
+
+Released feature changes since the published 2.3 version:
+
+- **Next Event panel:** Show the next upcoming calendar event's title and countdown as the default lower panel or as a temporary wrist-flick view. Choose All Calendars or a discovered individual calendar from the native Pebble Calendar plugin.
+- **Persistent calendar countdown:** Optional automatic calendar panel when an event is 5, 10, 15, 20, 25 or 30 minutes away. It remains visible until the event starts, using the same calendar selection as the shake preview, then returns to the configured default view.
+- **Independent shake actions:** Temporarily show another panel, show the next calendar event, announce the time through Universal TTS, display shake-strength diagnostics, or disable shake actions.
+- **Tunable shake detection:** SDK-default 25 Hz accelerometer sampling, independently configurable Short/Medium/Long gesture duration, and a 100–2,600 mg per-axis acceleration-change threshold slider in 50 mg steps.
+- **Shake calibration:** Seven-second diagnostic showing measured peak change and selected threshold (above/below), to help fine-tune wrist-flick activation.
+- **Weather+ integration and robustness:** Shared Weather+ plugin support, full-calendar-day forecast highs/lows, provider fallback, data handling and caching refinements.
+- **Reliability and compatibility:** Corrected calendar flick action routing, preserved stored preferences and legacy weather providers, plus expanded automated checks.
+
+**Requirements:** Native Pebble Calendar plugin and permissions for calendar features; configured Universal TTS plugin and a speaker-equipped watch for spoken time. Emery/Pebble Time 2 target.
 
 ## Features and setup
 
@@ -16,13 +30,15 @@ New installs default to the Weather+ shared source. Existing saved weather provi
 
 ## Independent shake behavior and spoken time
 
-The lower-panel default (Health or Weather) is separate from the Shake Watch Action (Show Other Panel for 7 seconds, Speak Time via Universal TTS, or Do Nothing). Existing installations default to the original panel-swap behavior; no user settings are reset.
+The lower-panel default (Health, Weather, or Next Event) is separate from the Shake Watch Action (Show Other Panel, Show Next Event, Speak Time via Universal TTS, Show Shake Strength, or Do Nothing). Existing installations default to the original panel-swap behavior; no user settings are reset.
 
 Speak Time requires a speaker-capable watch, the [Universal TTS plugin](https://github.com/ericlmccormick/Pebble-Universal-TTS) installed/configured with a working voice, and permission to invoke it. The watch sends its local clock time to the phone-side SDK, which requests the selected provider and streams ADPCM audio back for watch playback. No credentials are stored in KinetiCast.
 
-Shake sensitivity is independently adjustable (Low, Medium, High), and shake length can be Short, Medium or Long. The detector verifies acceleration changes sustained for the selected duration; longer, less-sensitive gestures are recommended for spoken time. The gesture detector now listens to batched 25 Hz accelerometer samples directly, without waiting for Pebble's relatively forceful tap interrupt. This increases responsiveness but may increase battery use compared with tap-only detection. Saved preferences persist across restarts. The legacy high/short behavior remains until users save new gesture settings.
+Shake acceleration threshold is adjustable from 100 to 2,600 mg in 50 mg steps, and shake length can be Short, Medium or Long. The detector verifies acceleration changes sustained for the selected duration; longer, less-sensitive gestures are recommended for spoken time. The gesture detector now listens to batched 25 Hz accelerometer samples directly, without waiting for Pebble's relatively forceful tap interrupt. This increases responsiveness but may increase battery use compared with tap-only detection. Saved preferences persist across restarts. The legacy high/short behavior remains until users save new gesture settings.
 
-## Next calendar event panel\n\nSelect **Next Calendar Event** as the default lower panel, or **Show Next Calendar Event** on a shake for seven seconds. The display includes the next future appointment title and a watch-local minute countdown. Use the native Pebble Calendar plugin; no external calendar credentials are stored. The phone settings offer **All Calendars** or names discovered in the current plugin events (up to ten events/seven days); the plugin does not expose a separate exhaustive calendar registry. Previously discovered names are retained. Missing permissions or data display an unavailable/empty state rather than fabricating an event.\n\n## Development
+## Next calendar event panel
+
+Select **Next Calendar Event** as the default lower panel, or **Show Next Calendar Event** on a shake for seven seconds. The display includes the next future appointment title and a watch-local minute countdown. Use the native Pebble Calendar plugin; no external calendar credentials are stored. The phone settings offer **All Calendars** or names discovered in the current plugin events (up to ten events/seven days); the plugin does not expose a separate exhaustive calendar registry. Previously discovered names are retained. Missing permissions or data display an unavailable/empty state rather than fabricating an event.\n\n## Development
 
 The project is a native Pebble SDK 3 app. Run `pebble build` with a supported SDK, or use [GitHub Actions](.github/workflows/build.yml). Review `package.json` for the authoritative platform, version and AppMessage keys. Regression tests are in `tests/`; they cover weather provider, units, transport and release assumptions.
 
