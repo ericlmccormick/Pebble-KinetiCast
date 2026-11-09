@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const c=fs.readFileSync('src/c/main.c','utf8');
 const js=fs.readFileSync('src/pkjs/index.js','utf8');
 const manifest=require('../package.json');
-assert.equal(manifest.version,'2.4.0');
+assert.equal(manifest.version,'2.4.1');
 for(const key of ['COMMAND','TEXT','CHUNK','SHAKE_ACTION','SHAKE_SENSITIVITY','SHAKE_LENGTH'])assert.ok(Number.isInteger(manifest.pebble.messageKeys[key]));
 assert.equal(new Set(Object.values(manifest.pebble.messageKeys)).size,Object.keys(manifest.pebble.messageKeys).length);
 assert.ok(manifest.pebble.usesPermissions.some(p=>p.name==='UniversalTtsSpeak'&&p.plugin==='2c5edc42-b096-4f76-b284-1f27907e6502'));
@@ -45,7 +45,7 @@ assert.match(c,/if \(\(s_shake_action == 0 \|\| s_shake_action == 3\) && !s_cale
 assert.match(c,/update_shake_subscription\(void\)/);
 assert.match(c,/return s_shake_sensitivity >= 400 \? 3 : 2/);
 assert.match(c,/s_shake_length == 2 \? 700 : \(s_shake_length == 1 \? 350 : 100\)/);
-assert.doesNotMatch(c,/accel_tap_service_subscribe\(/,'No tap-gated gesture detector');
+assert.match(c,/if \(s_gesture_power_mode == 1\)[\s\S]*?accel_tap_service_subscribe\(tap_armed_gesture_handler\)/);
 assert.doesNotMatch(c,/s_shake_timeout_timer/,'No tap-gated two-second window');
 console.log('Calendar action 3 and independent gentle-flick sensitivity regression checks passed');
 
@@ -64,3 +64,11 @@ console.log('Shake strength diagnostic regression checks passed');
 
 assert.match(js, /Math\.min\(2600, 100 \+ Math\.round\(\(n - 100\) \/ 50\) \* 50\)/);
 assert.match(c, /100 \+ \(\(value - 100 \+ 25\) \/ 50\) \* 50/);
+
+assert.match(js, /messageKey": "GESTURE_POWER_MODE"/);
+assert.match(js, /messageKey": "HEALTH_LIVE_UPDATES"/);
+assert.match(c, /s_health_live_updates/);
+assert.match(c, /if \(!s_health_live_updates\) return;/);
+assert.match(c, /bool labels_changed/);
+assert.match(c, /if \(graph_changed\) layer_mark_dirty\(s_hr_graph_layer\)/);
+assert.match(c, /if \(strcmp\(hr_value, s_hr_buf\) != 0\)/);
