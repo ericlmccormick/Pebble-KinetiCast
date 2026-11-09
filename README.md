@@ -2,7 +2,7 @@
 
 Pebble Time 2 watchface combining clock, weather and health information.
 
-**Current source version:** 2.4.0 (see `package.json`). **Target:** Emery / Pebble Time 2.
+**Current source version:** 2.4.1 (see `package.json`). **Target:** Emery / Pebble Time 2.
 
 ## v2.4.0 — Calendar, voice and gesture upgrades
 
@@ -72,3 +72,15 @@ Shake Acceleration Threshold now ranges from **100 to 2,600 mg**, in **50 mg inc
 ## v2.3.8 — Persistent calendar countdown
 
 The optional **Persistent Calendar Notification** toggle automatically changes the watchface's lower panel to **Next Calendar Event** when the next matching event is within a configurable lead time. The **Show Before Event** dropdown appears only while the toggle is on, with choices of 5, 10, 15, 20, 25 or 30 minutes (default 15). The event title and live countdown stay visible until the event starts, then the normal default lower panel returns. The native Calendar plugin's existing **Next Event Calendar** filter (All Calendars or an individually discovered calendar) applies to both shake previews and persistent notifications. With no matching event, the lower panel stays on its normal selection. The watch stores toggle and lead time locally and reevaluates on every clock minute, settings update, or incoming event; timed callbacks enter at the configured lead-time boundary and restore the default at the actual event start. Persistent notifications take priority over shake previews and strength-test overlays. No sound, buzz, or phone notification is generated. Enable native Pebble Calendar permissions to receive events.
+
+## v2.4.1 — Power and efficiency improvements
+
+- **Optional gesture power saver:** Responsive mode retains the user-tested continuous 25 Hz sampling (5 samples/batch, ~432,000 callbacks per day); Battery Saver uses the Pebble tap interrupt to activate short 25 Hz bursts, with lower idle sensor activity but potentially misses gentle flicks. The sampling frequency itself is unchanged.
+- **Change-driven rendering:** Forecast day labels regenerate only when date, units or forecast temperatures change; health labels and goal canvas redraw when their actual values change; the heart-rate history graph and calendar countdown redraw only when the displayed data changes. Battery indicator redraws only on battery-level change.
+- **Health controls:** Optional Live Health Updates toggle. When disabled, the watch still updates displayed health metrics once per minute rather than responding to every movement/heart-rate callback.
+- **Calendar optimization:** No subscription unless Next Event is the default panel, next-event shake action is selected, or persistent calendar notification is enabled. At most one application-level source read per hour while active; unsubscribe after data arrives. Only the next event is transmitted to the watch and persisted locally; minute-by-minute countdown stays on-watch. Disabling all calendar features stops future reads and clears the watch's one event. The native Calendar plugin's own background behavior is separate and not controlled by KinetiCast.
+- **Weather+ optimization:** Suppress unchanged Weather+ payloads and avoid forcing weather refreshes when a shake briefly reveals another panel or when unrelated settings are saved.
+- **Timer efficiency:** The persistent calendar's event boundary timer is retained instead of canceled/recreated every minute.
+- **Power activity information:** Settings summarize theoretical sensor callback rates, calendar source read rate, weather source and live-health mode. These are workload indicators, *not* measured per-feature current draw or battery percentage. Users can disable gesture processing, live health events, calendar views/notifications, or alter weather refresh settings.
+
+**Trade-off:** Hourly calendar snapshots can miss events created or modified between refreshes. Tap-armed gestures save idle work at the expense of gentle-flick sensitivity. Neither feature's battery savings are quantified until physical watch testing.
