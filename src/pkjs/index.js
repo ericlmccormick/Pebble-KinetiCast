@@ -361,7 +361,6 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
-    'SHAKE_ACTION': parseInt(settings.SHAKE_ACTION, 10) || 0,
         'DAY1_HIGH': json.daily.temperature_2m_max[1],
         'DAY1_LOW': json.daily.temperature_2m_min[1],
         'DAY1_ICON': getWmoIcon(json.daily.weather_code[1], 1),
@@ -961,6 +960,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
     'SHOW_SLEEP': (settings.SHOW_SLEEP == true || settings.SHOW_SLEEP === "true" || settings.SHOW_SLEEP == 1) ? 1 : 0,
     'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
     'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
+    'SHAKE_ACTION': parseInt(settings.SHAKE_ACTION, 10) || 0,
     'HR_GRAPH_WINDOW': parseInt(settings.HR_GRAPH_WINDOW, 10) || 20,
     'SLEEP_BRIEF_SECONDS': parseInt(settings.SLEEP_BRIEF_SECONDS, 10) || 0
   };
