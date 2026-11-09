@@ -800,7 +800,7 @@ function getWeather() {
   var provider = chosenWeatherSource(settings);
   // A healthy Weather+ subscription owns the forecast; do not poll twice.
   if (provider === 'weatherplus' && arguments[1] !== true) {
-    if (weatherPlusSubscription && Date.now()-weatherPlusLastData < 30*60000) return;
+    if (weatherPlusSubscription && (!weatherPlusLastData || Date.now()-weatherPlusLastData < 30*60000)) return;
     if (!weatherPlusSubscription) { startWeatherPlus(); return; }
   }
   if (provider === 'weatherplus') settings.WEATHER_PROVIDER = 'auto';
