@@ -125,6 +125,10 @@ var clayConfig = [
           { "label": "Auto (Solar Sync)", "value": "2" }
         ]
       },
+      { "type": "toggle", "messageKey": "HEALTH_LIVE_UPDATES", "label": "Live Health Updates", "defaultValue": true,
+        "description": "Off reduces heart-rate/movement redraws. Health figures refresh once per minute instead." },
+      { "type": "text", "id": "power-activity-summary",
+        "defaultValue": "Power Activity (estimates, not measured battery drain): Wrist flick enabled: ~432,000 sensor callbacks/day at 25 Hz in batches of 5. Disable with Shake Action = Do Nothing. Calendar: at most 1 source read/hour only when used; disable both calendar panel and persistent reminder. Weather+: shared cache; built-in forecast refresh uses selected interval. Health: disable Live Health Updates for minute-only display updates." },
       { "type": "toggle", "messageKey": "SHOW_SLEEP", "label": "Display Morning Sleep Briefing", "defaultValue": true },
       { "type": "select", "messageKey": "SLEEP_BRIEF_SECONDS",
         "label": "Sleep Briefing Auto-Hide", "defaultValue": "0",
@@ -155,6 +159,11 @@ var calendarEvents = [];
 var calendarState = 'pending';
 var calendarLastSent = '';
 var calendarTimer = null;
+var calendarLastReadAt = 0;
+var calendarReadPending = false;
+var CALENDAR_READ_INTERVAL_MS = 60 * 60 * 1000;
+// Source activity and messages are workload proxies, not electrical power measurements.
+var activityCounters = {calendarReads:0, calendarMessages:0, weatherMessages:0};
 var CALENDAR_NAMES_KEY = 'kineticast.calendar.names.v1';
 function calendarProperty(p, fields) {
   for (var i=0;i<fields.length;i++) {
@@ -219,42 +228,104 @@ function nextCalendarEvent() {
   }
   return null;
 }
+function calendarFeaturesEnabled(settings) {
+  settings = settings || readSettings();
+  return Number(settings.DEFAULT_VIEW || 0) === 2 ||
+    Number(settings.SHAKE_ACTION || 0) === 3 ||
+    settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false);
+}
 function sendNextCalendarEvent(force) {
-  var ev=nextCalendarEvent();
-  var msg=ev?{NEXT_EVENT_TITLE:ev.title.slice(0,65),
-    NEXT_EVENT_START:Math.floor(ev.start/1000),NEXT_EVENT_STATUS:1}:
+  if (!calendarFeaturesEnabled()) return;
+  var ev = nextCalendarEvent();
+  // Only the *one* next event is sent to the watch. It maintains the countdown
+  // itself and persists that event locally; no per-minute phone messages.
+  var msg = ev ? {NEXT_EVENT_TITLE:ev.title.slice(0,65),
+    NEXT_EVENT_START:Math.floor(ev.start/1000),NEXT_EVENT_STATUS:1} :
     {NEXT_EVENT_TITLE:'',NEXT_EVENT_START:0,NEXT_EVENT_STATUS:calendarState==='failed'?2:0};
-  var sig=JSON.stringify(msg);
-  if(!force && sig===calendarLastSent)return;
-  Pebble.sendAppMessage(msg,function(){calendarLastSent=sig;},function(err){
-    console.log('KinetiCast: calendar update delivery failed '+JSON.stringify(err));
-  });
+  var sig = JSON.stringify(msg);
+  if (sig === calendarLastSent) return; // even force must not create duplicate traffic
+  Pebble.sendAppMessage(msg,function(){
+    calendarLastSent = sig;
+    activityCounters.calendarMessages++;
+  },function(err){console.log('KinetiCast calendar delivery failed: '+JSON.stringify(err));});
+}
+function stopCalendarSource() {
+  if (calendarSubscription && typeof calendarSubscription.unsubscribe === 'function') {
+    try { calendarSubscription.unsubscribe(); } catch(e){}
+  }
+  calendarSubscription = null;
+  calendarReadPending = false;
 }
 function startCalendarSource() {
-  if(calendarSubscription)return;
-  if(typeof Pebble.subscribeToSource!=='function') {
-    calendarState='failed';sendNextCalendarEvent(true);return;
+  if (!calendarFeaturesEnabled()) {
+    stopCalendarSource();
+    return;
   }
-  try{
-    calendarSubscription=Pebble.subscribeToSource({
+  if (calendarReadPending) return;
+  if (calendarLastReadAt && Date.now() - calendarLastReadAt < CALENDAR_READ_INTERVAL_MS)
+    return;
+  if (typeof Pebble.subscribeToSource !== 'function') {
+    calendarState='failed';
+    calendarLastReadAt=Date.now();
+    sendNextCalendarEvent(false);
+    return;
+  }
+  calendarReadPending = true;
+  calendarLastReadAt = Date.now();
+  activityCounters.calendarReads++;
+  try {
+    calendarSubscription = Pebble.subscribeToSource({
       category:'calendar',item:'event',
-      onData:function(envelope){
-        var parsed=parseCalendarEvents(envelope);
-        if(parsed===null){console.log('KinetiCast: invalid calendar response ignored');return;}
-        calendarEvents=parsed;
+      onData:function(envelope) {
+        if (!calendarFeaturesEnabled()) {stopCalendarSource();return;}
+        var parsed = parseCalendarEvents(envelope);
+        if (parsed === null) {
+          console.log('KinetiCast: invalid calendar response ignored');
+          stopCalendarSource();return;
+        }
+        calendarEvents = parsed; // transient only: just one event stored on watch
         updateKnownCalendars(parsed);
-        calendarState='ready';
-        sendNextCalendarEvent(true);
+        calendarState = 'ready';
+        sendNextCalendarEvent(false);
+        stopCalendarSource(); // do not retain an always-active calendar subscription
       },
-      onError:function(err){
+      onError:function(err) {
         console.log('KinetiCast: calendar plugin unavailable '+JSON.stringify(err));
         calendarState='failed';
-        if(!calendarEvents.length)sendNextCalendarEvent(true);
+        stopCalendarSource();
+        if (!calendarEvents.length)sendNextCalendarEvent(false);
       }
     });
-  }catch(err){calendarState='failed';console.log('KinetiCast calendar error: '+err);
-    if(!calendarEvents.length)sendNextCalendarEvent(true);}
-  if(!calendarTimer)calendarTimer=setInterval(function(){sendNextCalendarEvent(false);},60000);
+  } catch(err) {
+    calendarState='failed';
+    stopCalendarSource();
+    console.log('KinetiCast calendar error: '+err);
+    if (!calendarEvents.length)sendNextCalendarEvent(false);
+  }
+  if(!calendarTimer)calendarTimer=setInterval(function(){
+    if (calendarFeaturesEnabled()) startCalendarSource();
+    else stopCalendarSource();
+  },CALENDAR_READ_INTERVAL_MS);
+}
+function syncCalendarConfiguration(previous, current) {
+  var was = calendarFeaturesEnabled(previous), active = calendarFeaturesEnabled(current);
+  if (!active) {
+    stopCalendarSource();
+    calendarEvents=[];
+    calendarLastSent='';
+    if (was) Pebble.sendAppMessage(
+      {NEXT_EVENT_TITLE:'',NEXT_EVENT_START:0,NEXT_EVENT_STATUS:0},
+      function(){},function(){});
+    return;
+  }
+  if (!was) {
+    calendarLastReadAt=0; // newly enabled calendar needs initial event
+    startCalendarSource();
+  } else if (String(previous.CALENDAR_FILTER||'__all__') !==
+             String(current.CALENDAR_FILTER||'__all__')) {
+    // Re-evaluate only the already downloaded events. Do not re-fetch.
+    sendNextCalendarEvent(false);
+  }
 }
 function updateCalendarSelectOptions(){
   var names=calendarNames(),chosen=String(readSettings().CALENDAR_FILTER||'__all__');
@@ -528,6 +599,7 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
+    'HEALTH_LIVE_UPDATES': settingEnabled(settings.HEALTH_LIVE_UPDATES,true) ? 1 : 0,
     'PERSISTENT_CALENDAR_ENABLE': settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false) ? 1 : 0,
     'PERSISTENT_CALENDAR_MINUTES': persistentCalendarMinutes(settings.PERSISTENT_CALENDAR_MINUTES),
         'DAY1_HIGH': json.daily.temperature_2m_max[1],
@@ -839,6 +911,7 @@ var weatherPlusSubscription = null;
 var weatherPlusTimer = null;
 var weatherPlusLastData = 0;
 var weatherPlusStarted = 0;
+var weatherPlusLastPayload = null;
 function chosenWeatherSource(settings) {
   return settings.WEATHER_PROVIDER || (settings.API_KEY ? 'openweathermap' : 'weatherplus');
 }
@@ -949,7 +1022,16 @@ function applyWeatherPlus(data) {
   };
   var uv = weatherPlusNum(props,'uv_index');
   if (uv !== null && uv >= 0 && uv < 40) dict.UV_INDEX = Math.round(uv);
+  // Shared plugin already caches forecasts. Avoid transmitting identical
+  // payloads repeatedly; resync after restart/reconnect through a fresh setup.
+  var signature = JSON.stringify(dict);
+  if (signature === weatherPlusLastPayload) {
+    weatherPlusLastData = Date.now();
+    return;
+  }
   Pebble.sendAppMessage(dict,function() {
+    activityCounters.weatherMessages++;
+    weatherPlusLastPayload = signature;
     weatherPlusLastData = Date.now();
     lastWeatherSuccess = weatherPlusLastData;
   },function() { console.log('KinetiCast: Weather+ delivery failed'); });
@@ -964,6 +1046,7 @@ function stopWeatherPlus() {
 function startWeatherPlus() {
   stopWeatherPlus();
   weatherPlusLastData = 0;
+  weatherPlusLastPayload = null;
   weatherPlusStarted = Date.now();
   if (!weatherPlusInstalled() || typeof Pebble.subscribeToSource !== 'function') {
     console.log('KinetiCast: Weather+ missing; retaining built-in weather backup');
@@ -1060,7 +1143,7 @@ function getWeather() {
 Pebble.addEventListener('ready', function() {
   if (chosenWeatherSource(readSettings()) === 'weatherplus') startWeatherPlus();
   else getWeather();
-  startCalendarSource();
+  if (calendarFeaturesEnabled()) startCalendarSource();
 });
 
 Pebble.addEventListener('appmessage', function(e) {
@@ -1097,6 +1180,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
   if (!e || !e.response || e.response === 'CANCEL') { return; }
   
   var oldSettings = syncLegacyPreferences(readSettings());
+  var previousSettings = Object.assign({},oldSettings);
   
   // Bypass Clay's integer translation entirely by decoding the raw JSON payload
   var rawSettings;
@@ -1121,7 +1205,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
 
   // Save the string-keyed configuration back to memory
   localStorage.setItem('clay-settings', JSON.stringify(syncLegacyPreferences(settings)));
-  sendNextCalendarEvent(true);
+  syncCalendarConfiguration(previousSettings, settings);
 
   // Build the numerical dictionary the watch's C code is expecting
   var appDict = {
@@ -1140,9 +1224,17 @@ Pebble.addEventListener('webviewclosed', function(e) {
   };
   
   Pebble.sendAppMessage(appDict, function() {
-    lastWeatherSuccess = 0;
-    stopWeatherPlus();
-    if (chosenWeatherSource(settings) === 'weatherplus') startWeatherPlus();
-    else getWeather(true);
+    // Reopen shared weather only when provider or display units actually change.
+    var weatherChanged = chosenWeatherSource(previousSettings) !== chosenWeatherSource(settings) ||
+      desiredTempUnit(previousSettings) !== desiredTempUnit(settings) ||
+      desiredDistanceUnit(previousSettings) !== desiredDistanceUnit(settings) ||
+      String(previousSettings.MANUAL_LOCATION||'') !== String(settings.MANUAL_LOCATION||'') ||
+      settingEnabled(previousSettings.USE_GPS,true) !== settingEnabled(settings.USE_GPS,true);
+    if (weatherChanged) {
+      lastWeatherSuccess = 0;
+      stopWeatherPlus();
+      if (chosenWeatherSource(settings) === 'weatherplus') startWeatherPlus();
+      else getWeather(true);
+    }
   }, function() { console.log('Settings delivery failed'); stopWeatherPlus(); if (chosenWeatherSource(settings) === 'weatherplus') startWeatherPlus(); else getWeather(true); });
 });
