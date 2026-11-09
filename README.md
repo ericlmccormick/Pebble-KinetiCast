@@ -2,7 +2,7 @@
 
 Pebble Time 2 watchface combining clock, weather and health information.
 
-**Current source version:** 2.3.6 (see `package.json`). **Target:** Emery / Pebble Time 2.
+**Current source version:** 2.3.7 (see `package.json`). **Target:** Emery / Pebble Time 2.
 
 ## Features and setup
 
@@ -48,3 +48,7 @@ Replaced the three fixed Low/Medium/High shake sensitivity presets with a phone-
 ## v2.3.6 — Shake strength calibration mode
 
 Choose **Show Shake Strength (Test, 7 seconds)** under Shake Watch Action. A diagnostic overlay appears over the lower part of the watchface showing **Peak: X mg** and **Set: Y mg (ABOVE/BELOW)**, then disappears after seven seconds. Peak is the largest change on a single acceleration axis between adjacent 25 Hz samples observed during a 320 ms measurement window. Diagnostic mode starts measuring at 60 mg, below the user-configured 100–500 mg action threshold, so you can see sub-threshold motions. A short cooldown reduces repeated pop-ups. The ABOVE/BELOW indication compares only acceleration strength; ordinary actions also require qualifying motion impulses and the selected shake duration. The existing lower panel and other shake actions remain unchanged. These readings should be calibrated on the actual watch; ordinary wrist movement can sometimes cause a test reading.
+
+## v2.3.7 — Expanded shake threshold
+
+Shake Acceleration Threshold now ranges from **100 to 2,600 mg**, in **50 mg increments**. The phone slider, settings normalization, on-watch persistence and strength test overlay all use the same value. Existing slider choices are rounded to the nearest 50 mg step; legacy Low/Medium/High settings migrate to 450/300/150 mg. The 25 Hz sensor rate and Short/Medium/Long duration settings are unchanged. These values are per-axis differences between adjacent 40 ms samples, not overall acceleration magnitude.
