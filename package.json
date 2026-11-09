@@ -57,7 +57,8 @@
             "PERSISTENT_CALENDAR_ENABLE": 43,
             "PERSISTENT_CALENDAR_MINUTES": 44,
             "GESTURE_POWER_MODE": 45,
-            "HEALTH_LIVE_UPDATES": 46
+            "HEALTH_LIVE_UPDATES": 46,
+            "WEATHER_UPDATES_ENABLED": 47
         },
         "projectType": "native",
         "resources": {
