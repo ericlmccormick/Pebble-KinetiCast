@@ -31,6 +31,8 @@
 #define PERSIST_KEY_TEMP_UNIT 32
 #define PERSIST_KEY_DISTANCE_UNIT 33
 #define PERSIST_KEY_SHAKE_ACTION 34
+#define PERSIST_KEY_SHAKE_SENSITIVITY 35
+#define PERSIST_KEY_SHAKE_LENGTH 36
 
 #define HR_HISTORY_SIZE 60 
 
@@ -62,7 +64,17 @@ static bool s_connected = true, s_use_metric = false, s_is_night = false, s_show
 static int s_temp_unit = 0; // F=0, C=1, K=2, R=3 
 static int s_theme_mode = 0, s_default_view = 0;
 // 0: alternate panel (legacy); 1: speak clock time; 2: disabled.
-static int s_shake_action = 0; 
+static int s_shake_action = 0;
+// Preset 2/0 matches legacy tap responsiveness until new settings are saved.
+static int s_shake_sensitivity = 2; // 0 low, 1 medium, 2 high
+static int s_shake_length = 0;      // 0 short, 1 medium, 2 long
+static bool s_shake_tracking = false;
+static AppTimer *s_shake_timeout_timer = NULL;
+static uint64_t s_shake_first_motion_ms = 0, s_shake_last_motion_ms = 0;
+static uint64_t s_shake_cooldown_until_ms = 0;
+static int s_shake_motion_events = 0;
+static int16_t s_shake_prev_x = 0, s_shake_prev_y = 0, s_shake_prev_z = 0;
+static bool s_shake_has_previous = false; 
 static bool s_view_is_swapped = false; 
 
 static int s_d1_hi = 0, s_d1_lo = 0, s_d2_hi = 0, s_d2_lo = 0, s_d3_hi = 0, s_d3_lo = 0; 
@@ -144,6 +156,8 @@ static void save_weather_data() {
   persist_write_int(PERSIST_KEY_THEME_MODE, s_theme_mode); 
   persist_write_int(PERSIST_KEY_DEFAULT_VIEW, s_default_view);
   persist_write_int(PERSIST_KEY_SHAKE_ACTION, s_shake_action);
+  persist_write_int(PERSIST_KEY_SHAKE_SENSITIVITY, s_shake_sensitivity);
+  persist_write_int(PERSIST_KEY_SHAKE_LENGTH, s_shake_length);
   persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window);
   persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration);
   persist_write_int(PERSIST_KEY_TEMP_UNIT, s_temp_unit);
@@ -183,6 +197,14 @@ static void load_weather_data() {
   if (persist_exists(PERSIST_KEY_SHAKE_ACTION)) {
     int action = persist_read_int(PERSIST_KEY_SHAKE_ACTION);
     s_shake_action = (action >= 0 && action <= 2) ? action : 0;
+  }
+  if (persist_exists(PERSIST_KEY_SHAKE_SENSITIVITY)) {
+    int value = persist_read_int(PERSIST_KEY_SHAKE_SENSITIVITY);
+    s_shake_sensitivity = (value >= 0 && value <= 2) ? value : 2;
+  }
+  if (persist_exists(PERSIST_KEY_SHAKE_LENGTH)) {
+    int value = persist_read_int(PERSIST_KEY_SHAKE_LENGTH);
+    s_shake_length = (value >= 0 && value <= 2) ? value : 0;
   }
   if (persist_exists(PERSIST_KEY_SLEEP_DURATION)) {
     int duration = persist_read_int(PERSIST_KEY_SLEEP_DURATION);
@@ -230,10 +252,29 @@ static void speak_local_time(void) {
   app_message_outbox_send();
 }
 
-static void tap_handler(AccelAxisType axis, int32_t direction) {
-  (void)axis; (void)direction;
+// SDK tap notification arms a short, on-demand 25 Hz sample window.
+// No continuous accelerometer subscription while the watch is idle.
+static void stop_shake_tracking(void) {
+  if (s_shake_timeout_timer) {
+    app_timer_cancel(s_shake_timeout_timer);
+    s_shake_timeout_timer = NULL;
+  }
+  if (s_shake_tracking) {
+    accel_data_service_unsubscribe();
+    s_shake_tracking = false;
+  }
+  s_shake_has_previous = false;
+  s_shake_first_motion_ms = 0;
+  s_shake_last_motion_ms = 0;
+  s_shake_motion_events = 0;
+}
+
+static void perform_shake_action(void) {
   if (layer_get_frame(s_sleep_layer).origin.y < 228) {
-    if (s_sleep_dismiss_timer) { app_timer_cancel(s_sleep_dismiss_timer); s_sleep_dismiss_timer = NULL; }
+    if (s_sleep_dismiss_timer) {
+      app_timer_cancel(s_sleep_dismiss_timer);
+      s_sleep_dismiss_timer = NULL;
+    }
     animate_sleep_layer(false);
     #if defined(PBL_HEALTH)
     s_last_sleep_sec = (int)health_service_sum_today(HealthMetricSleepSeconds);
@@ -253,6 +294,78 @@ static void tap_handler(AccelAxisType axis, int32_t direction) {
   } else if (s_shake_action == 1) {
     speak_local_time();
   }
+}
+
+// Sensors report axis acceleration in milligravity units.
+// Sensitivity changes the required acceleration change AND event count.
+// Duration measures sustained shake impulses, not just a cooldown.
+static int shake_motion_threshold(void) {
+  return s_shake_sensitivity == 0 ? 720 : (s_shake_sensitivity == 1 ? 520 : 330);
+}
+static int shake_required_events(void) {
+  return s_shake_sensitivity == 0 ? 5 : (s_shake_sensitivity == 1 ? 4 : 3);
+}
+static uint32_t shake_required_duration_ms(void) {
+  return s_shake_length == 2 ? 850 : (s_shake_length == 1 ? 480 : 160);
+}
+static int shake_abs(int value) { return value < 0 ? -value : value; }
+
+static void shake_data_handler(AccelData *data, uint32_t count) {
+  if (!s_shake_tracking || !data) return;
+  int threshold = shake_motion_threshold();
+  int required = shake_required_events();
+  uint32_t duration = shake_required_duration_ms();
+  for (uint32_t i = 0; i < count; ++i) {
+    AccelData *sample = &data[i];
+    if (sample->did_vibrate) { s_shake_has_previous = false; continue; }
+    if (s_shake_has_previous) {
+      int dx = shake_abs((int)sample->x - s_shake_prev_x);
+      int dy = shake_abs((int)sample->y - s_shake_prev_y);
+      int dz = shake_abs((int)sample->z - s_shake_prev_z);
+      int largest = dx > dy ? dx : dy;
+      if (dz > largest) largest = dz;
+      // Separate successive impulses to avoid counting sensor noise.
+      if (largest >= threshold &&
+          (!s_shake_last_motion_ms || sample->timestamp >= s_shake_last_motion_ms + 95)) {
+        if (!s_shake_first_motion_ms) s_shake_first_motion_ms = sample->timestamp;
+        s_shake_last_motion_ms = sample->timestamp;
+        s_shake_motion_events++;
+        if (s_shake_motion_events >= required &&
+            s_shake_last_motion_ms - s_shake_first_motion_ms >= duration) {
+          s_shake_cooldown_until_ms = sample->timestamp + (s_shake_action == 1 ? 5000 : 2500);
+          stop_shake_tracking();
+          perform_shake_action();
+          return;
+        }
+      }
+    }
+    s_shake_prev_x = sample->x;
+    s_shake_prev_y = sample->y;
+    s_shake_prev_z = sample->z;
+    s_shake_has_previous = true;
+  }
+}
+
+static void shake_timeout_callback(void *data) {
+  (void)data;
+  s_shake_timeout_timer = NULL;
+  stop_shake_tracking();
+}
+
+static void tap_handler(AccelAxisType axis, int32_t direction) {
+  (void)axis;
+  (void)direction;
+  if (s_shake_action == 2 || s_shake_tracking) return;
+  AccelData sample;
+  if (accel_service_peek(&sample) == 0 &&
+      sample.timestamp < s_shake_cooldown_until_ms) return;
+  s_shake_first_motion_ms = s_shake_last_motion_ms = 0;
+  s_shake_motion_events = 0;
+  s_shake_has_previous = false;
+  s_shake_tracking = true;
+  accel_data_service_subscribe(5, shake_data_handler);
+  accel_service_set_sampling_rate(ACCEL_SAMPLING_25HZ);
+  s_shake_timeout_timer = app_timer_register(2100, shake_timeout_callback, NULL);
 }
 
 static void update_daily_goals() {
@@ -842,6 +955,16 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
       s_hr_window = (size == 30 || size == 60) ? size : 20;
       layer_mark_dirty(s_hr_graph_layer);
     }
+    else if(t->key == MESSAGE_KEY_SHAKE_SENSITIVITY) {
+      int value = get_int(t);
+      s_shake_sensitivity = (value >= 0 && value <= 2) ? value : 0;
+      stop_shake_tracking();
+    }
+    else if(t->key == MESSAGE_KEY_SHAKE_LENGTH) {
+      int value = get_int(t);
+      s_shake_length = (value >= 0 && value <= 2) ? value : 2;
+      stop_shake_tracking();
+    }
     else if(t->key == MESSAGE_KEY_SHAKE_ACTION) {
       int action = get_int(t);
       s_shake_action = (action >= 0 && action <= 2) ? action : 0;
@@ -901,6 +1024,7 @@ int main(void) {
   tick_timer_service_unsubscribe();
   battery_state_service_unsubscribe();
   accel_tap_service_unsubscribe();
+  stop_shake_tracking();
   connection_service_unsubscribe();
   #if defined(PBL_HEALTH)
   health_service_events_unsubscribe();
