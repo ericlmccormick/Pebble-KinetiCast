@@ -70,6 +70,16 @@ var clayConfig = [
           { "label": "Weather Panel (3-Day Forecast)", "value": "1" }
         ]
       },
+      {
+        "type": "select", "messageKey": "SHAKE_ACTION",
+        "label": "Shake Watch Action", "defaultValue": "0",
+        "options": [
+          { "label": "Show Other Panel (7 seconds)", "value": "0" },
+          { "label": "Speak Time (Universal TTS)", "value": "1" },
+          { "label": "Do Nothing", "value": "2" }
+        ]
+      },
+      { "type": "text", "defaultValue": "Speak Time requires the Universal TTS plugin, a configured voice, and a watch with a speaker. The default shake action remains Show Other Panel for existing installations." },
       { 
         "type": "select", 
         "messageKey": "THEME_MODE", 
@@ -106,6 +116,24 @@ var clayConfig = [
 ];
 
 var clay = new Clay(clayConfig, customClay, { autoHandleEvents: false });
+var ttsClient = null;
+function getTtsClient() {
+  if (ttsClient) return ttsClient;
+  if (typeof Pebble.invokeAction !== 'function') {
+    console.log('KinetiCast: Universal TTS requires plugin-capable Pebble firmware');
+    return null;
+  }
+  try {
+    ttsClient = require('./universal_tts').create({
+      Pebble: Pebble,
+      onError: function(err) { console.log('KinetiCast TTS: '+(err && err.message || err)); }
+    });
+    return ttsClient;
+  } catch (err) {
+    console.log('KinetiCast: TTS SDK init failed: '+err);
+    return null;
+  }
+}
 
 // ==============================================================================
 // SECTION: WEATHER ICON TRANSLATION HELPERS
@@ -333,6 +361,7 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
+    'SHAKE_ACTION': parseInt(settings.SHAKE_ACTION, 10) || 0,
         'DAY1_HIGH': json.daily.temperature_2m_max[1],
         'DAY1_LOW': json.daily.temperature_2m_min[1],
         'DAY1_ICON': getWmoIcon(json.daily.weather_code[1], 1),
@@ -866,7 +895,16 @@ Pebble.addEventListener('ready', function() {
 });
 
 Pebble.addEventListener('appmessage', function(e) {
-  if (e && e.payload && e.payload.REQUEST_WEATHER !== undefined) getWeather();
+  if (!e || !e.payload) return;
+  if (ttsClient && ttsClient.handleMessage(e.payload)) return;
+  if (e.payload.COMMAND === 'SPEAK_REQUEST') {
+    var tts = getTtsClient();
+    if (tts) tts.speak(String(e.payload.TEXT || '')).catch(function(err) {
+      console.log('KinetiCast TTS request failed: '+err);
+    });
+    return;
+  }
+  if (e.payload.REQUEST_WEATHER !== undefined) getWeather();
 });
 
 Pebble.addEventListener('showConfiguration', function(e) {
