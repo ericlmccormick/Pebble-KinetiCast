@@ -64,6 +64,7 @@ static char s_shake_test_reading_buf[40], s_shake_test_threshold_buf[48];
 static char s_calendar_title[72] = "";
 static char s_calendar_countdown[48] = "";
 static uint32_t s_calendar_start = 0;
+static uint32_t s_calendar_handoff_requested_start = 0;
 static int s_calendar_status = 0;
 static bool s_persistent_calendar_enabled = false;
 static int s_persistent_calendar_minutes = 15;
@@ -128,6 +129,7 @@ static void update_theme_colors();
 static void execute_panel_transition(bool alternate_view);
 static void update_calendar_countdown(void);
 static void update_persistent_calendar(void);
+static void request_calendar_handoff(void);
 static void update_shake_subscription(void); 
 static void generate_forecast_bitmaps();
 static void show_shake_strength(int peak_mg); 
@@ -567,6 +569,22 @@ static void calendar_start_callback(void *context) {
   update_persistent_calendar();
   update_calendar_countdown();
 }
+// Retain only one event on the watch. Fifteen minutes after it starts,
+// request the next appointment from the phone's already cached Calendar data.
+// This is one AppMessage at the event boundary, not an extra plugin sync.
+static void request_calendar_handoff(void) {
+  if (!s_connected || s_calendar_status != 1 || !s_calendar_start) return;
+  if (s_default_view != 2 && s_shake_action != 3 &&
+      !s_persistent_calendar_enabled) return;
+  time_t now = time(NULL);
+  if ((int64_t)now - (int64_t)s_calendar_start < 15 * 60) return;
+  if (s_calendar_handoff_requested_start == s_calendar_start) return;
+  DictionaryIterator *iter;
+  if (app_message_outbox_begin(&iter) != APP_MSG_OK) return;
+  dict_write_uint8(iter, MESSAGE_KEY_REQUEST_NEXT_EVENT, 1);
+  if (app_message_outbox_send() == APP_MSG_OK)
+    s_calendar_handoff_requested_start = s_calendar_start;
+}
 static void update_persistent_calendar(void) {
   time_t now = time(NULL);
   bool should_show = calendar_takeover_due_at(now);
@@ -610,8 +628,15 @@ static void update_calendar_countdown(void) {
   if (s_calendar_status != 1 || !s_calendar_start ||
       s_calendar_start < (uint32_t)now) {
     if (s_calendar_status == 2) snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "Calendar unavailable");
-    else if (s_calendar_status == 1 && s_calendar_start)
-      snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "Event started");
+    else if (s_calendar_status == 1 && s_calendar_start) {
+      if ((int64_t)now - (int64_t)s_calendar_start >= 15 * 60) {
+        // Don't continue displaying a stale event after the handoff window.
+        text_layer_set_text(s_calendar_title_layer, "Next event");
+        snprintf(s_calendar_countdown, sizeof(s_calendar_countdown),
+                 "Waiting for update");
+      } else
+        snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "Event started");
+    }
     else snprintf(s_calendar_countdown, sizeof(s_calendar_countdown), "No upcoming events");
   } else {
     uint32_t remaining = s_calendar_start - (uint32_t)now;
@@ -630,7 +655,12 @@ static void update_calendar_countdown(void) {
 static void bluetooth_callback(bool connected) {
   bool was_connected = s_connected;
   s_connected = connected;
-  if (connected && !was_connected) { s_last_weather_request = 0; request_weather(); }
+  if (connected && !was_connected) {
+    s_last_weather_request = 0;
+    s_calendar_handoff_requested_start = 0; // retry a missed handoff on reconnect
+    request_calendar_handoff();
+    request_weather();
+  }
   if (!connected && !quiet_time_is_active()) vibes_double_pulse(); 
   layer_mark_dirty(s_weather_arc_layer); // Keep the last valid icon, even when offline. 
 }
@@ -902,6 +932,7 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   } 
 
   update_persistent_calendar();
+  request_calendar_handoff();
   update_calendar_countdown();
   request_weather(); // Throttled according to UPDATE_FREQ and the last valid update.
   // No periodic redraw: weather/theme updates invalidate the weather arc. 
