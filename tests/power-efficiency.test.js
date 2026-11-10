@@ -3,7 +3,7 @@ const fs=require('node:fs');
 const c=fs.readFileSync('src/c/main.c','utf8');
 const js=fs.readFileSync('src/pkjs/index.js','utf8');
 const manifest=require('../package.json');
-assert.equal(manifest.version,'2.4.2');
+assert.equal(manifest.version,'2.4.3');
 const keys=manifest.pebble.messageKeys;
 assert.equal(keys.GESTURE_POWER_MODE,45);
 assert.equal(keys.HEALTH_LIVE_UPDATES,46);
