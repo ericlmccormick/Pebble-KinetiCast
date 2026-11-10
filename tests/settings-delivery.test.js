@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync('src/pkjs/index.js','utf8');
 const watch = fs.readFileSync('src/c/main.c','utf8');
 const manifest = require('../package.json');
-assert.equal(manifest.version, '2.4.3');
+assert.equal(manifest.version, '2.4.4');
 const keys = [
   'PERSISTENT_CALENDAR_ENABLE', 'PERSISTENT_CALENDAR_MINUTES',
   'WEATHER_UPDATES_ENABLED', 'HEALTH_LIVE_UPDATES', 'GESTURE_POWER_MODE'
