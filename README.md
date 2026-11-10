@@ -2,7 +2,7 @@
 
 Pebble Time 2 watchface combining clock, weather and health information.
 
-**Current source version:** 2.4.2 (see `package.json`). **Target:** Emery / Pebble Time 2.
+**Current source version:** 2.4.3 (see `package.json`). **Target:** Emery / Pebble Time 2.
 
 ## v2.4.0 — Calendar, voice and gesture upgrades
 
@@ -92,3 +92,7 @@ The **Enable Weather Updates** toggle defaults on. Turning it off unsubscribes f
 ## v2.4.2 — Settings refresh
 
 Reorganized the phone configuration into **Watchface**, **Weather**, **Calendar**, **Wrist Gestures**, **Health & Sleep**, and **Power & Diagnostics**. Reduced descriptive text, moved each option beside its related control, and reordered dropdowns logically (especially wrist actions, theme, weather providers and sleep timeout). Unneeded fields now hide automatically based on the provider, weather enable switch, calendar features, gesture action, GPS mode and sleep-summary switch. Settings keys, saved values, defaults and service behavior remain compatible with v2.4.1.
+
+## v2.4.3 — Persistent calendar and settings delivery fix
+
+Fixed a regression where phone settings were saved correctly but the watch-bound settings packet omitted **Persistent Calendar Notification** and **Show Event Early**. The watch could remain in its old state, so upcoming events never took over the bottom panel. Settings now send these keys *before* calendar data synchronization, allowing the watch to activate the persisted lead-time timer. Also restored watch delivery for Weather Updates, Live Health Updates and Gesture Power Mode; these switches had the same missing-packet defect. Source regression tests now inspect the actual outbound AppMessage dictionary, not merely the presence of settings controls.
