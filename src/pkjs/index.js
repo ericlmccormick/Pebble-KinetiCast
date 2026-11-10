@@ -1223,7 +1223,6 @@ Pebble.addEventListener('webviewclosed', function(e) {
 
   // Save the string-keyed configuration back to memory
   localStorage.setItem('clay-settings', JSON.stringify(syncLegacyPreferences(settings)));
-  syncCalendarConfiguration(previousSettings, settings);
 
   // Build the numerical dictionary the watch's C code is expecting
   var appDict = {
@@ -1234,6 +1233,8 @@ Pebble.addEventListener('webviewclosed', function(e) {
     'SHOW_SLEEP': (settings.SHOW_SLEEP == true || settings.SHOW_SLEEP === "true" || settings.SHOW_SLEEP == 1) ? 1 : 0,
     'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
     'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
+    'PERSISTENT_CALENDAR_ENABLE': settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false) ? 1 : 0,
+    'PERSISTENT_CALENDAR_MINUTES': persistentCalendarMinutes(settings.PERSISTENT_CALENDAR_MINUTES),
     'SHAKE_ACTION': parseInt(settings.SHAKE_ACTION, 10) || 0,
     'SHAKE_SENSITIVITY': normalizeShakeThreshold(settings.SHAKE_SENSITIVITY),
     'SHAKE_LENGTH': settings.SHAKE_LENGTH === undefined ? 2 : parseInt(settings.SHAKE_LENGTH, 10),
@@ -1242,6 +1243,9 @@ Pebble.addEventListener('webviewclosed', function(e) {
   };
   
   Pebble.sendAppMessage(appDict, function() {
+    // The watch must receive the persistent-calendar controls before a next
+    // event is delivered, otherwise the takeover can be evaluated as disabled.
+    syncCalendarConfiguration(previousSettings, settings);
     // Reopen shared weather only when provider or display units actually change.
     var weatherChanged = weatherUpdatesEnabled(previousSettings) !== weatherUpdatesEnabled(settings) ||
       chosenWeatherSource(previousSettings) !== chosenWeatherSource(settings) ||
