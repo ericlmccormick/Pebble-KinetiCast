@@ -1174,6 +1174,12 @@ Pebble.addEventListener('appmessage', function(e) {
     });
     return;
   }
+  if (e.payload.REQUEST_NEXT_EVENT !== undefined) {
+    // Use the in-memory snapshot (up to ten events), excluding events already
+    // started. No new native Calendar subscription or extra provider polling.
+    if (calendarFeaturesEnabled()) sendNextCalendarEvent(false);
+    return;
+  }
   if (e.payload.REQUEST_WEATHER !== undefined && weatherUpdatesEnabled()) getWeather();
 });
 
