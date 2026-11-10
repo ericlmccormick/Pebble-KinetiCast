@@ -2,7 +2,7 @@
 
 Pebble Time 2 watchface combining clock, weather and health information.
 
-**Current source version:** 2.4.3 (see `package.json`). **Target:** Emery / Pebble Time 2.
+**Current source version:** 2.4.4 (see `package.json`). **Target:** Emery / Pebble Time 2.
 
 ## v2.4.0 — Calendar, voice and gesture upgrades
 
@@ -93,6 +93,10 @@ The **Enable Weather Updates** toggle defaults on. Turning it off unsubscribes f
 
 Reorganized the phone configuration into **Watchface**, **Weather**, **Calendar**, **Wrist Gestures**, **Health & Sleep**, and **Power & Diagnostics**. Reduced descriptive text, moved each option beside its related control, and reordered dropdowns logically (especially wrist actions, theme, weather providers and sleep timeout). Unneeded fields now hide automatically based on the provider, weather enable switch, calendar features, gesture action, GPS mode and sleep-summary switch. Settings keys, saved values, defaults and service behavior remain compatible with v2.4.1.
 
-## v2.4.3 — Persistent calendar and settings delivery fix
+## v2.4.4 — Persistent calendar and settings delivery fix
 
 Fixed a regression where phone settings were saved correctly but the watch-bound settings packet omitted **Persistent Calendar Notification** and **Show Event Early**. The watch could remain in its old state, so upcoming events never took over the bottom panel. Settings now send these keys *before* calendar data synchronization, allowing the watch to activate the persisted lead-time timer. Also restored watch delivery for Weather Updates, Live Health Updates and Gesture Power Mode; these switches had the same missing-packet defect. Source regression tests now inspect the actual outbound AppMessage dictionary, not merely the presence of settings controls.
+
+## v2.4.4 — Advance calendar after an event starts
+
+The watch keeps the current event's "Event started" notice for **15 minutes after its start**, then sends one lightweight next-event request to the phone. The phone selects the next future event from the already cached native Calendar source snapshot (no additional source read) and sends **only one next event** back to the watch. This corrects shake previews that indefinitely showed an earlier event as started even after it ended. On a disconnected watch, the display shows a pending next-event update instead of an outdated event; reconnect triggers another handoff request. If the cached source has no future events, the watch shows "No upcoming events" until the normal hourly Calendar source refresh. Persistent lead-time reminders and the hourly calendar source read limit are unchanged.
