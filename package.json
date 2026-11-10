@@ -58,7 +58,8 @@
             "PERSISTENT_CALENDAR_MINUTES": 44,
             "GESTURE_POWER_MODE": 45,
             "HEALTH_LIVE_UPDATES": 46,
-            "WEATHER_UPDATES_ENABLED": 47
+            "WEATHER_UPDATES_ENABLED": 47,
+            "REQUEST_NEXT_EVENT": 48
         },
         "projectType": "native",
         "resources": {
@@ -231,5 +232,5 @@
             "Calendar"
         ]
     },
-    "version": "2.4.3"
+    "version": "2.4.4"
 }
