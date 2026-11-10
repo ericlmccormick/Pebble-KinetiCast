@@ -34,6 +34,7 @@ jobs:
           node tests/shake-tts.test.js
           node tests/calendar-next-event.test.js
           node tests/calendar-persistent.test.js
+          node tests/calendar-handoff.test.js
           node tests/power-efficiency.test.js
           node tests/settings-layout.test.js
           node tests/settings-delivery.test.js
