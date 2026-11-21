@@ -2,7 +2,7 @@
 
 Pebble Time 2 watchface combining clock, weather and health information.
 
-**Current source version:** 2.4.4 (see `package.json`). **Target:** Emery / Pebble Time 2.
+**Current source version:** 2.5.0 (see `package.json`). **Target:** Emery / Pebble Time 2.
 
 ## v2.4.0 — Calendar, voice and gesture upgrades
 

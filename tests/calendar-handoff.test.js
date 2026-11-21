@@ -6,7 +6,7 @@ const vm=require('node:vm');
 const c=fs.readFileSync('src/c/main.c','utf8');
 const src=fs.readFileSync('src/pkjs/index.js','utf8');
 const manifest=require('../package.json');
-assert.equal(manifest.version,'2.4.4');
+assert.equal(manifest.version,'2.5.0');
 assert.equal(manifest.pebble.messageKeys.REQUEST_NEXT_EVENT,48);
 assert.match(c,/static void request_calendar_handoff\(void\)/);
 assert.match(c,/\(int64_t\)now - \(int64_t\)s_calendar_start < 15 \* 60/);

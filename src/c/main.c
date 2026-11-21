@@ -620,6 +620,22 @@ static void update_persistent_calendar(void) {
   s_view_is_swapped = false;
   execute_panel_transition(false);
 }
+static void set_calendar_panel_title(const char *title) {
+  GRect box = layer_get_bounds(text_layer_get_layer(s_calendar_title_layer));
+  const char *sizes[] = {FONT_KEY_GOTHIC_24_BOLD, FONT_KEY_GOTHIC_18_BOLD,
+                         FONT_KEY_GOTHIC_14_BOLD};
+  GFont font = NULL;
+  for (size_t i = 0; i < ARRAY_LENGTH(sizes); ++i) {
+    font = fonts_get_system_font(sizes[i]);
+    GSize size = graphics_text_layout_get_content_size(title, font,
+      GRect(0, 0, box.size.w, 300), GTextOverflowModeWordWrap, GTextAlignmentCenter);
+    if (size.h <= box.size.h - 6) break;
+  }
+  text_layer_set_font(s_calendar_title_layer, font);
+  text_layer_set_overflow_mode(s_calendar_title_layer, GTextOverflowModeWordWrap);
+  text_layer_set_text(s_calendar_title_layer, title);
+}
+
 static void update_calendar_countdown(void) {
   if (!s_calendar_countdown_layer) return;
   if (!s_calendar_takeover_active && s_default_view != 2 &&
@@ -631,7 +647,7 @@ static void update_calendar_countdown(void) {
     else if (s_calendar_status == 1 && s_calendar_start) {
       if ((int64_t)now - (int64_t)s_calendar_start >= 15 * 60) {
         // Don't continue displaying a stale event after the handoff window.
-        text_layer_set_text(s_calendar_title_layer, "Next event");
+        set_calendar_panel_title("Next event");
         snprintf(s_calendar_countdown, sizeof(s_calendar_countdown),
                  "Waiting for update");
       } else
@@ -882,6 +898,26 @@ static void set_weather_icon(char *icon_code) {
   bitmap_layer_set_bitmap(s_weather_icon_layer, s_weather_bitmap); 
 }
 
+static void set_forecast_range(TextLayer *label, char *text, size_t len,
+                               int high, int low) {
+  GRect box = layer_get_bounds(text_layer_get_layer(label));
+  GFont font = fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD :
+                                                        FONT_KEY_GOTHIC_18_BOLD);
+  const GRect measurement = GRect(0, 0, 240, 30);
+  snprintf(text, len, s_temp_unit == 2 ? "%d/%d" : "%d°/%d°", high, low);
+  GSize size = graphics_text_layout_get_content_size(text, font, measurement,
+    GTextOverflowModeFill, GTextAlignmentLeft);
+  if (size.w > box.size.w) {
+    font = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
+    size = graphics_text_layout_get_content_size(text, font, measurement,
+      GTextOverflowModeFill, GTextAlignmentLeft);
+    if (size.w > box.size.w)
+      snprintf(text, len, s_temp_unit == 2 ? "%d/%d" : "%d/%d°", high, low);
+  }
+  text_layer_set_font(label, font);
+  text_layer_set_text(label, text);
+}
+
 static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   int hour = tick_time->tm_hour; 
   if (!clock_is_24h_style()) { hour %= 12; if (hour == 0) hour = 12; } 
@@ -908,27 +944,24 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
     last_forecast_unit = s_temp_unit;
     for (int i=0;i<6;i++) last_forecast_values[i]=forecast_values[i];
   static char d1_txt[8], d2_txt[8], d3_txt[8]; 
-  static char t1_txt[12], t2_txt[12], t3_txt[12]; 
+  static char t1_txt[24], t2_txt[24], t3_txt[24];
   static const char* const day_names[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"}; 
   time_t weekday_now = time(NULL); 
   
   struct tm *t1 = localtime(&(time_t){weekday_now + SECONDS_PER_DAY}); 
   snprintf(d1_txt, sizeof(d1_txt), "%s", day_names[t1->tm_wday]); 
-  snprintf(t1_txt, sizeof(t1_txt), s_temp_unit == 2 ? "%d/%d" : "%d°/%d°", s_d1_hi, s_d1_lo); 
   text_layer_set_text(s_f_day1_layer, d1_txt); 
-  text_layer_set_text(s_f_temp1_layer, t1_txt); 
+  set_forecast_range(s_f_temp1_layer, t1_txt, sizeof(t1_txt), s_d1_hi, s_d1_lo);
   
   struct tm *t2 = localtime(&(time_t){weekday_now + (SECONDS_PER_DAY * 2)}); 
   snprintf(d2_txt, sizeof(d2_txt), "%s", day_names[t2->tm_wday]); 
-  snprintf(t2_txt, sizeof(t2_txt), s_temp_unit == 2 ? "%d/%d" : "%d°/%d°", s_d2_hi, s_d2_lo); 
   text_layer_set_text(s_f_day2_layer, d2_txt); 
-  text_layer_set_text(s_f_temp2_layer, t2_txt); 
+  set_forecast_range(s_f_temp2_layer, t2_txt, sizeof(t2_txt), s_d2_hi, s_d2_lo);
   
   struct tm *t3 = localtime(&(time_t){weekday_now + (SECONDS_PER_DAY * 3)}); 
   snprintf(d3_txt, sizeof(d3_txt), "%s", day_names[t3->tm_wday]); 
-  snprintf(t3_txt, sizeof(t3_txt), s_temp_unit == 2 ? "%d/%d" : "%d°/%d°", s_d3_hi, s_d3_lo); 
   text_layer_set_text(s_f_day3_layer, d3_txt); 
-  text_layer_set_text(s_f_temp3_layer, t3_txt);
+  set_forecast_range(s_f_temp3_layer, t3_txt, sizeof(t3_txt), s_d3_hi, s_d3_lo);
   } 
 
   update_persistent_calendar();
@@ -1069,7 +1102,7 @@ static void main_window_load(Window *window) {
   layer_add_child(s_calendar_container, text_layer_get_layer(s_calendar_title_layer));
   layer_add_child(s_calendar_container, text_layer_get_layer(s_calendar_countdown_layer));
   text_layer_set_text(s_calendar_label_layer, "NEXT EVENT");
-  text_layer_set_text(s_calendar_title_layer, s_calendar_title);
+  set_calendar_panel_title(s_calendar_title);
   update_calendar_countdown();
 
   // CHANGED: All inner Y coordinates for health increased by 16 so they remain visually anchored where they were
@@ -1107,9 +1140,9 @@ static void main_window_load(Window *window) {
   s_f_icon2_layer = bitmap_layer_create(GRect(68, 16, 64, 64)); 
   s_f_icon3_layer = bitmap_layer_create(GRect(134, 16, 64, 64)); 
 
-  s_f_temp1_layer = text_layer_create(GRect(2, 74, 64, 24)); 
-  s_f_temp2_layer = text_layer_create(GRect(68, 74, 64, 24)); 
-  s_f_temp3_layer = text_layer_create(GRect(134, 74, 64, 24)); 
+  s_f_temp1_layer = text_layer_create(GRect(2, 72, 64, 24));
+  s_f_temp2_layer = text_layer_create(GRect(68, 72, 64, 24));
+  s_f_temp3_layer = text_layer_create(GRect(134, 72, 64, 24));
   
   bitmap_layer_set_compositing_mode(s_f_icon1_layer, GCompOpSet); 
   bitmap_layer_set_compositing_mode(s_f_icon2_layer, GCompOpSet); 
@@ -1275,10 +1308,6 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     else if(t->key == MESSAGE_KEY_TEMP_UNIT) {
       int unit = get_int(t);
       s_temp_unit = (unit >= 0 && unit <= 3) ? unit : 0;
-      const char *font = s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD;
-      text_layer_set_font(s_f_temp1_layer, fonts_get_system_font(font));
-      text_layer_set_font(s_f_temp2_layer, fonts_get_system_font(font));
-      text_layer_set_font(s_f_temp3_layer, fonts_get_system_font(font));
     }
     else if(t->key == MESSAGE_KEY_UV_INDEX) s_uv = get_int(t);
     else if(t->key == MESSAGE_KEY_IS_NIGHT) {
@@ -1339,7 +1368,7 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     }
     else if(t->key == MESSAGE_KEY_NEXT_EVENT_TITLE && t->type == TUPLE_CSTRING) {
       snprintf(s_calendar_title, sizeof(s_calendar_title), "%s", t->value->cstring);
-      text_layer_set_text(s_calendar_title_layer, s_calendar_title);
+      set_calendar_panel_title(s_calendar_title);
     }
     else if(t->key == MESSAGE_KEY_NEXT_EVENT_START) s_calendar_start = (uint32_t)get_int(t);
     else if(t->key == MESSAGE_KEY_NEXT_EVENT_STATUS) s_calendar_status = get_int(t);
