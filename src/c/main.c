@@ -622,12 +622,17 @@ static void update_persistent_calendar(void) {
 }
 static void set_calendar_panel_title(const char *title) {
   GRect box = layer_get_bounds(text_layer_get_layer(s_calendar_title_layer));
-  GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
-  GSize size = graphics_text_layout_get_content_size(title, font,
-    GRect(0, 0, box.size.w, 300), GTextOverflowModeWordWrap, GTextAlignmentCenter);
-  if (size.h > box.size.h)
-    font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
+  const char *sizes[] = {FONT_KEY_GOTHIC_24_BOLD, FONT_KEY_GOTHIC_18_BOLD,
+                         FONT_KEY_GOTHIC_14_BOLD};
+  GFont font = NULL;
+  for (size_t i = 0; i < ARRAY_LENGTH(sizes); ++i) {
+    font = fonts_get_system_font(sizes[i]);
+    GSize size = graphics_text_layout_get_content_size(title, font,
+      GRect(0, 0, box.size.w, 300), GTextOverflowModeWordWrap, GTextAlignmentCenter);
+    if (size.h <= box.size.h - 6) break;
+  }
   text_layer_set_font(s_calendar_title_layer, font);
+  text_layer_set_overflow_mode(s_calendar_title_layer, GTextOverflowModeWordWrap);
   text_layer_set_text(s_calendar_title_layer, title);
 }
 
