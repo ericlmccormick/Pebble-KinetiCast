@@ -45,11 +45,11 @@ function populatePluginOptions(pebble,config,settings) {
     .find(function(item){return item.items.some(function(x){return x.messageKey==='CORNER_TL_GROUP';});});
   if(!section)return;
   ['TL','TR','BL','BR'].forEach(function(slot){
-    var selected=String(settings['CORNER_'+slot+'_PLUGIN']||'');
+    var selected=String(settings['CORNER_'+slot+'_PLUGIN_SPEC']||'');
     var choices=options.slice();
     if(selected&&!choices.some(function(o){return o.value===selected;}))
       choices.push({label:'Previously chosen plugin (may be unavailable)',value:selected});
-    var item=section.items.find(function(x){return x.messageKey==='CORNER_'+slot+'_PLUGIN';});
+    var item=section.items.find(function(x){return x.messageKey==='CORNER_'+slot+'_PLUGIN_SPEC';});
     if(item){item.options=choices;item.defaultValue=selected;}
   });
 }
@@ -110,7 +110,7 @@ function apply(pebble,settings,catalog) {
   }).filter(function(x){return x.metric>=90&&x.metric<=95;});
   if(!selected.length)return;
   selected.filter(function(x){return x.metric===95;}).forEach(function(x) {
-    var s=parseSpec(settings['CORNER_'+x.slot+'_PLUGIN']);
+    var s=parseSpec(settings['CORNER_'+x.slot+'_PLUGIN_SPEC']);
     var index=Number(settings['CORNER_'+x.slot+'_INDEX']||0);
     if(!isFinite(index)||index<0||index>20)index=0;
     if(s)subscribeReading(pebble,x.slot,s,index,token);
