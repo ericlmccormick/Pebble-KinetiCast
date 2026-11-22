@@ -35,6 +35,7 @@ const settings = {
 };
 const helpers = {
  settings,
+ cornerCatalog: require('../src/pkjs/corner-catalog'),
  desiredDistanceUnit:()=> 'mi',desiredTempUnit:()=> 'F',
  temperatureUnitId:()=>0,normalizeShakeThreshold:()=>300,
  persistentCalendarMinutes:v=>Number(v),
