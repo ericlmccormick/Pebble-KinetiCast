@@ -26,7 +26,13 @@ FakeXHR.prototype.respond = function(status, value) {
 const config = { TEMP_UNIT:'F', DISTANCE_UNIT:'mi', UPDATE_FREQ:30, WEATHER_PROVIDER:'nws', USE_GPS:false };
 const context = {
   console: {log(){}}, Date, Intl, Math, JSON, isFinite, parseInt, Number, Object,
-  require: function(key) { if(key === 'pebble-clay') return function(){}; return function(){}; },
+  require: function(key) {
+    if(key === './corner-catalog') return require('../src/pkjs/corner-catalog');
+    if(key === './corner-plugins') return require('../src/pkjs/corner-plugins');
+    if(key === './corner-weather') return require('../src/pkjs/corner-weather');
+    if(key === 'pebble-clay') return function(){};
+    return function(){};
+  },
   XMLHttpRequest: FakeXHR,
   localStorage: {getItem: () => JSON.stringify(config), setItem(){}},
   Pebble: {
