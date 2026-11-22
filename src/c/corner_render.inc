@@ -223,11 +223,26 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
     case 13:n=s_wx[7];break;
     case 14:n=s_uv;break;
     case 15:n=s_wx[8];break;
-    case 16: n=s_wx[9];
-  if(n!=KC_MISSING){
-      if(n<0)snprintf(value,sizeof(value),"None");
-      else if(n==0)snprintf(value,sizeof(value),"Now");
-      else snprintf(value,sizeof(value),"~%dh",n);}break;
+    case 16: {
+      n=s_wx[9];
+      if(n!=KC_MISSING) {
+        if(n<0)snprintf(value,sizeof(value),"None");
+        else {
+          int64_t remaining=(int64_t)n-(int64_t)now;
+          if(remaining<=0 && remaining>=-1800)
+            snprintf(value,sizeof(value),"Now");
+          else if(remaining<0)
+            snprintf(value,sizeof(value),"Passed");
+          else if(remaining<=3600)
+            snprintf(value,sizeof(value),"~%ld min",(long)((remaining+59)/60));
+          else
+            snprintf(value,sizeof(value),"~%ldh %ldm",
+              (long)(remaining/3600),(long)((remaining%3600)/60));
+        }
+      }
+      n=KC_MISSING; // already rendered from the absolute timestamp
+      break;
+    }
     case 17:n=s_wx[20];break;
     case 18:n=s_wx[21];break;
     case 19: {
