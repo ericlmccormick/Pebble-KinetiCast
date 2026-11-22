@@ -25,7 +25,11 @@ assert.equal(catalog.chosenMetric({CORNER_TL_GROUP:'system',CORNER_TL_SYSTEM:'90
 assert.equal(catalog.usesWeather({CORNER_MODE:1,CORNER_TL_GROUP:'weather'}),true);
 assert.equal(catalog.usesCalendar({CORNER_MODE:1,CORNER_BL_GROUP:'calendar'}),true);
 assert.equal(catalog.usesPlugins({CORNER_MODE:1,CORNER_BR_GROUP:'plugin'}),true);
-assert.equal(catalog.usesWeather({CORNER_MODE:0,CORNER_TL_GROUP:'weather'}),false);
+assert.equal(catalog.usesWeather({CORNER_TL_GROUP:'weather'}),true);
+assert.equal(catalog.centerView({}),0,'Original clock+date is default');
+assert.equal(catalog.centerView({CENTER_VIEW:'3'}),3);
+assert.ok(catalog.groups.clock.some(function(x){return x[0]===66&&/time/i.test(x[1]);}),
+  'Time is a selectable corner complication');
 function numeric(value,unit=''){return {numericValue:{value,unit}};}
 function seq(values,now,unit=''){
   return {series:{start:now,stepSec:3600,numericValue:{values,unit}}};
@@ -61,10 +65,18 @@ assert.deepEqual(plugins.parseSpec('uuid|agent|entity|value'),
 assert.equal(plugins.textOf({boolean:{value:false}}),'Off');
 const code=fs.readFileSync('src/c/main.c','utf8');
 const render=fs.readFileSync('src/c/corner_render.inc','utf8');
-for(const key of ['CORNER_MODE','BATTERY_BAR_STYLE','CORNER_TL','CORNER_TR',
+for(const key of ['CORNER_MODE','CENTER_VIEW','BATTERY_BAR_STYLE','CORNER_TL','CORNER_TR',
  'CORNER_BL','CORNER_BR','WX_RAIN_ETA','WX_SUNRISE'])assert.ok(code.includes('MESSAGE_KEY_'+key));
 assert.ok(render.includes('corner_rings(ctx,b,metric==30)'));
 assert.ok(render.includes('corner_apply_visibility'));
+assert.ok(render.includes('center_draw_proc'));
+assert.ok(render.includes('layer_set_frame(s_goals_canvas,GRect(15,16-rise,72,72))'),
+  'Original health ring canvas size and placement are preserved');
+assert.ok(render.includes('layer_set_frame(text_layer_get_layer(s_date_layer),GRect(0,52,200,30))'),
+  'Original date position is preserved');
+assert.ok(render.includes('center==1?GRect(0,74,200,60):GRect(0,76,200,60)'),
+  'Original time position is preserved by default');
+assert.ok(!render.includes('const int preset[3][4]'),'Remove all layout presets');
 assert.ok(code.includes('layer_set_hidden(s_battery_layer,s_battery_style==0)')||
   render.includes('layer_set_hidden(s_battery_layer,s_battery_style==0)'));
 console.log('Complication catalog, weather conversion, plugin discovery and watch wiring passed');
