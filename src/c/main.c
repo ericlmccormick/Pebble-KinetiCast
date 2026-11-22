@@ -42,6 +42,14 @@
 #define PERSIST_KEY_GESTURE_POWER_MODE 42
 #define PERSIST_KEY_HEALTH_LIVE_UPDATES 43
 #define PERSIST_KEY_WEATHER_UPDATES_ENABLED 44
+#define PERSIST_KEY_CORNER_MODE 45
+#define PERSIST_KEY_BATTERY_STYLE 46
+#define PERSIST_KEY_CORNER_BASE 47
+#define PERSIST_KEY_BATTERY_SAMPLE_PCT 55
+#define PERSIST_KEY_BATTERY_SAMPLE_TIME 56
+#define PERSIST_KEY_BATTERY_RATE 57
+#define PERSIST_KEY_WX_BASE 100
+#define PERSIST_KEY_WX_ALERT 122
 
 #define HR_HISTORY_SIZE 60 
 
@@ -117,7 +125,18 @@ static char s_icon_code[4] = "01d";
 static time_t s_last_weather_request = 0;
 static time_t s_last_weather_success = 0;
 static bool s_has_weather = false; 
-static int s_hr_history[HR_HISTORY_SIZE]; 
+static int s_hr_history[HR_HISTORY_SIZE];
+static Layer *s_corner_layers[4]={NULL,NULL,NULL,NULL};
+static int s_corner_mode=0,s_battery_style=1;
+static int s_corner_metric[4]={1,2,30,38};
+static char s_corner_plugin_title[4][20]={{0}};
+static char s_corner_plugin_value[4][24]={{0}};
+static int s_wx[22];
+static char s_wx_alert[48]="";
+static int s_battery_rate_x100=0;
+static int s_battery_last_sample_pct=0;
+static time_t s_battery_last_sample_time=0;
+static bool s_battery_charging=false; 
 
 // ==============================================================================
 // SECTION: FORWARD DECLARATIONS
@@ -133,7 +152,10 @@ static void update_persistent_calendar(void);
 static void request_calendar_handoff(void);
 static void update_shake_subscription(void); 
 static void generate_forecast_bitmaps();
-static void show_shake_strength(int peak_mg); 
+static void show_shake_strength(int peak_mg);
+static void corner_redraw(void);
+static void corner_apply_visibility(void);
+static void corner_draw_proc(Layer*,GContext*); 
 
 // ==============================================================================
 // SECTION: UTILITY & HELPER FUNCTIONS
@@ -232,7 +254,12 @@ static void save_weather_data() {
   persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window);
   persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration);
   persist_write_int(PERSIST_KEY_TEMP_UNIT, s_temp_unit);
-  persist_write_bool(PERSIST_KEY_DISTANCE_UNIT, s_use_metric); 
+  persist_write_bool(PERSIST_KEY_DISTANCE_UNIT, s_use_metric);
+  persist_write_int(PERSIST_KEY_CORNER_MODE,s_corner_mode);
+  persist_write_int(PERSIST_KEY_BATTERY_STYLE,s_battery_style);
+  for(int i=0;i<4;i++)persist_write_int(PERSIST_KEY_CORNER_BASE+i,s_corner_metric[i]);
+  for(int i=0;i<22;i++)persist_write_int(PERSIST_KEY_WX_BASE+i,s_wx[i]);
+  persist_write_string(PERSIST_KEY_WX_ALERT,s_wx_alert); 
   
   persist_write_int(PERSIST_KEY_D1_HI, s_d1_hi);
   persist_write_int(PERSIST_KEY_D1_LO, s_d1_lo);
@@ -246,6 +273,26 @@ static void save_weather_data() {
 }
 
 static void load_weather_data() {
+  for(int i=0;i<22;i++)s_wx[i]=persist_exists(PERSIST_KEY_WX_BASE+i)?
+    persist_read_int(PERSIST_KEY_WX_BASE+i):(-32768);
+  if(persist_exists(PERSIST_KEY_WX_ALERT))
+    persist_read_string(PERSIST_KEY_WX_ALERT,s_wx_alert,sizeof(s_wx_alert));
+  if(persist_exists(PERSIST_KEY_CORNER_MODE))
+    s_corner_mode=persist_read_int(PERSIST_KEY_CORNER_MODE)==1?1:0;
+  if(persist_exists(PERSIST_KEY_BATTERY_STYLE)){
+    int style=persist_read_int(PERSIST_KEY_BATTERY_STYLE);
+    s_battery_style=style>=0&&style<=3?style:1;
+  }
+  for(int i=0;i<4;i++)if(persist_exists(PERSIST_KEY_CORNER_BASE+i)){
+    int n=persist_read_int(PERSIST_KEY_CORNER_BASE+i);
+    if(n>=0&&n<=95)s_corner_metric[i]=n;
+  }
+  if(persist_exists(PERSIST_KEY_BATTERY_SAMPLE_PCT))
+    s_battery_last_sample_pct=persist_read_int(PERSIST_KEY_BATTERY_SAMPLE_PCT);
+  if(persist_exists(PERSIST_KEY_BATTERY_SAMPLE_TIME))
+    s_battery_last_sample_time=(time_t)persist_read_int(PERSIST_KEY_BATTERY_SAMPLE_TIME);
+  if(persist_exists(PERSIST_KEY_BATTERY_RATE))
+    s_battery_rate_x100=persist_read_int(PERSIST_KEY_BATTERY_RATE);
   if (persist_exists(PERSIST_KEY_CUR)) { 
     s_has_weather = true;
     s_last_weather_success = persist_exists(PERSIST_KEY_WEATHER_TIME) ? persist_read_int(PERSIST_KEY_WEATHER_TIME) : 0;
@@ -792,6 +839,8 @@ static void hr_graph_update_proc(Layer *layer, GContext *ctx) {
   }
   #endif
 }
+
+#include "corner_render.inc"
 
 static void sleep_layer_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer); 
