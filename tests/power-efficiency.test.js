@@ -22,7 +22,8 @@ assert.ok(!js.includes('"messageKey": "WEATHER_UPDATES_ENABLED"'),
 assert.ok(js.includes('weatherPush.requiresWeather(settings || readSettings(),cornerCatalog)'));
 assert.ok(js.includes("messageKey\": \"GESTURE_POWER_MODE\""));
 assert.ok(js.includes("messageKey\": \"HEALTH_LIVE_UPDATES\""));
-assert.ok(c.includes("if (!s_weather_updates_enabled) return"));
+assert.ok(c.includes('if(!weather_complications_needed())return'),
+  'Watch weather startup follows configured complications, not a manual toggle');
 assert.ok(!/request_weather\(\);\s*\/\/ Throttled according to UPDATE_FREQ/.test(c),
   'Minute handler must not poll weather');
 assert.ok(c.includes('Weather is pushed by the phone'));
