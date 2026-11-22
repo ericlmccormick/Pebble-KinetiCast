@@ -41,6 +41,7 @@ jobs:
           node --check src/pkjs/corner-plugins.js
           node --check src/pkjs/corner-weather.js
           node tests/corners.test.js
+          node tests/wrist-slide.test.js
           node --check src/pkjs/weather-push.js
           node --check src/pkjs/weather-delivery.js
           node tests/weather-push.test.js
