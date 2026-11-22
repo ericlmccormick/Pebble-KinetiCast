@@ -44,7 +44,7 @@ assert.equal(out.WX_FEELS,18);
 assert.equal(out.WX_HUMIDITY,0,'zero is not missing');
 assert.equal(out.WX_WIND_SPEED,11);
 assert.equal(out.WX_RAIN_CHANCE,10);
-assert.equal(out.WX_RAIN_ETA,2);
+assert.equal(out.WX_RAIN_ETA,now+7200,'watch receives absolute rain arrival timestamp');
 assert.equal(out.WX_RAIN_TREND,65);
 assert.equal(out.WX_TEMP_TREND,6);
 assert.equal(out.WX_AQI,weather.MISSING);
