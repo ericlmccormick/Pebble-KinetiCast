@@ -3,6 +3,7 @@
 #define KC_MISSING (-32768)
 static void corner_redraw(void) {
   for(int i=0;i<4;i++) if(s_corner_layers[i]) layer_mark_dirty(s_corner_layers[i]);
+  if(s_center_layer)layer_mark_dirty(s_center_layer);
 }
 // Seconds refresh is opt-in, independently of minute ticks and HR history.
 static AppTimer *s_corner_seconds_timer=NULL;
@@ -43,6 +44,7 @@ static const char *corner_label(int metric) {
     case 51:return "NEXT EVENT";case 52:return "NEXT EVENT";
     case 60:return "DATE";case 61:return "WEEK";case 62:return "DAY OF YEAR";
     case 63:return "YEAR";case 64:return "SECONDS";case 65:return "TIME ZONE";
+    case 66:return "TIME";
     case 70:return "SUNRISE";case 71:return "SUNSET";case 72:return "DAYLIGHT";
     case 73:return "DAYLIGHT";case 74:return "MOON";case 75:return "MOON LIT";
     case 80:return "BATTERY";case 81:return "BATTERY";case 82:return "DAYS LEFT";
@@ -98,30 +100,37 @@ static int corner_active(void) {
   #endif
 }
 static void corner_rings(GContext *ctx,GRect b,bool show_distance) {
-  int steps=corner_steps(),active=corner_active();
-  int size=b.size.h-4;
-  if(size>72)size=72;
-  if(size<36)size=36;
-  GRect r=GRect((b.size.w-size)/2,(b.size.h-size)/2,size,size);
+  // Match the original KinetiCast goals canvas precisely in a bottom corner.
+  // Legacy was a 72px canvas at (15,16) with a 3px inner drawing inset.
+  int diameter=b.size.h>=89?72:b.size.h-4;
+  if(diameter>b.size.w-20)diameter=b.size.w-20;
+  if(diameter<30)diameter=30;
+  int x=b.size.h>=89?15:(b.size.w-diameter)/2;
+  int y=b.size.h>=89?16:(b.size.h-diameter)/2;
+  GRect canvas=GRect(x,y,diameter,diameter);
+  GRect draw_bounds=grect_inset(canvas,GEdgeInsets(3));
   graphics_context_set_antialiased(ctx,true);
   graphics_context_set_stroke_width(ctx,3);
   graphics_context_set_stroke_color(ctx,is_dark_theme()?GColorDarkGray:GColorLightGray);
-  graphics_draw_arc(ctx,r,GOvalScaleModeFitCircle,0,TRIG_MAX_ANGLE);
-  graphics_draw_arc(ctx,grect_inset(r,GEdgeInsets(8)),GOvalScaleModeFitCircle,0,TRIG_MAX_ANGLE);
+  graphics_draw_arc(ctx,grect_inset(draw_bounds,GEdgeInsets(1)),
+    GOvalScaleModeFitCircle,0,TRIG_MAX_ANGLE);
+  graphics_draw_arc(ctx,grect_inset(draw_bounds,GEdgeInsets(8)),
+    GOvalScaleModeFitCircle,0,TRIG_MAX_ANGLE);
   graphics_context_set_stroke_width(ctx,5);
   graphics_context_set_stroke_color(ctx,GColorKellyGreen);
-  int active_pct=s_active_goal>0?(active*100)/s_active_goal:0;
-  int step_pct=s_step_goal>0?(steps*100)/s_step_goal:0;
-  if(active_pct>100)active_pct=100;
-  if(step_pct>100)step_pct=100;
-  graphics_draw_arc(ctx,r,GOvalScaleModeFitCircle,0,(active_pct*TRIG_MAX_ANGLE)/100);
+  int active=corner_active();
+  int steps=corner_steps();
+  graphics_draw_arc(ctx,draw_bounds,GOvalScaleModeFitCircle,0,
+    s_active_goal>0?(active*TRIG_MAX_ANGLE)/s_active_goal:0);
   graphics_context_set_stroke_color(ctx,GColorPictonBlue);
-  graphics_draw_arc(ctx,grect_inset(r,GEdgeInsets(7)),GOvalScaleModeFitCircle,
-    0,(step_pct*TRIG_MAX_ANGLE)/100);
-  graphics_context_set_text_color(ctx,is_dark_theme()?GColorWhite:GColorBlack);
-  if(show_distance) {
-    corner_text(ctx,s_dist_buf[0]?s_dist_buf:"--",b.size.h/2-14,28,
-      fonts_get_system_font(size<64?FONT_KEY_GOTHIC_18_BOLD:FONT_KEY_GOTHIC_24_BOLD),
+  graphics_draw_arc(ctx,grect_inset(draw_bounds,GEdgeInsets(7)),
+    GOvalScaleModeFitCircle,0,
+    s_step_goal>0?(steps*TRIG_MAX_ANGLE)/s_step_goal:0);
+  if(show_distance){
+    graphics_context_set_text_color(ctx,is_dark_theme()?GColorWhite:GColorBlack);
+    corner_text(ctx,s_dist_buf[0]?s_dist_buf:"--",
+      b.size.h>=89?34:y+diameter/2-17,35,
+      fonts_get_system_font(diameter>=70?FONT_KEY_GOTHIC_28_BOLD:FONT_KEY_GOTHIC_18_BOLD),
       GTextAlignmentCenter,b.size.w);
   }
 }
@@ -143,12 +152,8 @@ static void corner_heart_graph(GContext *ctx,GRect b) {
 }
 static void corner_draw_proc(Layer *layer,GContext *ctx) {
   int slot=-1;for(int i=0;i<4;i++)if(s_corner_layers[i]==layer){slot=i;break;}
-  if(slot<0||!s_corner_mode)return;
+  if(slot<0)return;
   int metric=s_corner_metric[slot];
-  if(s_corner_mode>=2&&s_corner_mode<=4){
-    const int preset[3][4]={{1,2,14,16},{1,80,30,38},{1,2,52,80}};
-    metric=preset[s_corner_mode-2][slot];
-  }
   if(metric==0)return;
   GRect b=layer_get_bounds(layer);
   GColor fg=is_dark_theme()?GColorWhite:GColorBlack;
@@ -295,6 +300,15 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
     case 63:if(tm_now)snprintf(value,sizeof(value),"%d%%",
       (100*tm_now->tm_yday)/(tm_now->tm_year%4==0?366:365));break;
     case 64:if(tm_now)snprintf(value,sizeof(value),"%02d",tm_now->tm_sec);break;
+    case 66: {
+      if(tm_now){
+        int h=tm_now->tm_hour;
+        if(!clock_is_24h_style()){h%=12;if(h==0)h=12;}
+        snprintf(value,sizeof(value),clock_is_24h_style()?"%02d:%02d":"%d:%02d",
+          h,tm_now->tm_min);
+      }
+      break;
+    }
     case 70:case 71:{
       time_t t=(time_t)s_wx[metric==70?18:19];
   if(t>0){struct tm *s=localtime(&t);
@@ -353,36 +367,95 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
   }
   corner_numeric(ctx,b,corner_label(metric),value,NULL);
 }
+static int active_center_view(void) {
+  if(s_calendar_takeover_active)return 2;
+  if(s_view_is_swapped)return s_panel_override==2?2:3;
+  return s_center_view;
+}
+static void center_draw_proc(Layer *layer,GContext *ctx) {
+  int mode=active_center_view();
+  if(mode<2)return;
+  GRect b=layer_get_bounds(layer);
+  GColor fg=is_dark_theme()?GColorWhite:GColorBlack;
+  graphics_context_set_text_color(ctx,fg);
+  if(mode==2) {
+    corner_text(ctx,"NEXT EVENT",0,18,
+      fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GTextAlignmentCenter,b.size.w);
+    corner_text(ctx,s_calendar_title[0]?s_calendar_title:"No upcoming events",
+      15,40,fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+      GTextAlignmentCenter,b.size.w);
+    corner_text(ctx,s_calendar_countdown[0]?s_calendar_countdown:"",53,19,
+      fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),GTextAlignmentCenter,b.size.w);
+    return;
+  }
+  static const char * const days[]={"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
+  time_t now=time(NULL);
+  struct tm *local=localtime(&now);
+  int wd=local?local->tm_wday:0;
+  GBitmap *icons[3]={s_f_bmp1,s_f_bmp2,s_f_bmp3};
+  int hi[3]={s_d1_hi,s_d2_hi,s_d3_hi};
+  int lo[3]={s_d1_lo,s_d2_lo,s_d3_lo};
+  for(int i=0;i<3;i++){
+    int x=1+i*66;
+    graphics_draw_text(ctx,days[(wd+i+1)%7],
+      fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+      GRect(x,0,66,18),GTextOverflowModeTrailingEllipsis,GTextAlignmentCenter,NULL);
+    if(icons[i])
+      graphics_draw_bitmap_in_rect(ctx,icons[i],GRect(x+15,17,36,36));
+    char temp[24];
+    if(s_has_weather||s_last_weather_success>0||s_d1_hi||s_d1_lo){
+      snprintf(temp,sizeof(temp),"%d°/%d°",hi[i],lo[i]);
+    } else snprintf(temp,sizeof(temp),"--");
+    graphics_draw_text(ctx,temp,fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
+      GRect(x,52,66,20),GTextOverflowModeTrailingEllipsis,GTextAlignmentCenter,NULL);
+  }
+}
 static void corner_apply_visibility(void) {
   if(!s_weather_icon_layer || !s_health_container || !s_corner_layers[0])return;
-  bool custom=s_corner_mode!=0;
-  bool legacy_bottom=!custom||s_view_is_swapped||s_calendar_takeover_active;
-  bool show_custom=custom&&!legacy_bottom;
-  // Reserve enough room for the chosen battery strip, including its percentage label.
+  int center=active_center_view();
+  bool original_center=center==0;
+  bool show_time=center==0||center==1;
+  bool original_left=s_corner_metric[0]==1;
+  bool original_right=s_corner_metric[1]==2 && (center==0||center==1);
+  bool original_rings=s_corner_metric[2]==30||s_corner_metric[2]==31;
+  bool original_hr=s_corner_metric[3]==38;
+
+  // Do not shift the date or clock in the default layout.
+  layer_set_frame(text_layer_get_layer(s_date_layer),GRect(0,52,200,30));
+  layer_set_frame(text_layer_get_layer(s_time_layer),
+    center==1?GRect(0,74,200,60):GRect(0,76,200,60));
+  layer_set_hidden(text_layer_get_layer(s_date_layer),!original_center);
+  layer_set_hidden(text_layer_get_layer(s_time_layer),!show_time);
+  if(s_center_layer)layer_set_hidden(s_center_layer,center<2);
+
+  layer_set_hidden(bitmap_layer_get_layer(s_weather_icon_layer),!original_left);
+  layer_set_hidden(s_weather_arc_layer,!original_right);
   int bottom_y=s_battery_style==3?211:s_battery_style==2?218:
     s_battery_style==0?228:222;
-  for(int i=2;i<4;i++)layer_set_frame(s_corner_layers[i],
-    GRect(i==2?0:100,150,100,bottom_y-150));
-  // The two top corners, date and clock, and bottom corners never overlap.
-  // During a temporary full-width view, restore the entire legacy arrangement.
-  layer_set_frame(text_layer_get_layer(s_date_layer),show_custom?
-    GRect(0,74,200,26):GRect(0,52,200,30));
-  layer_set_frame(text_layer_get_layer(s_time_layer),show_custom?
-    GRect(0,96,200,54):GRect(0,76,200,60));
-  layer_set_hidden(bitmap_layer_get_layer(s_weather_icon_layer),show_custom);
-  layer_set_hidden(s_weather_arc_layer,show_custom);
-  if(show_custom){
-    layer_set_hidden(s_health_container,true);
-    layer_set_hidden(s_forecast_container,true);
-    layer_set_hidden(s_calendar_container,true);
-  } else {
-    int active=s_calendar_takeover_active?2:
-      (s_view_is_swapped?(s_default_view==0?1:0):s_default_view);
-    layer_set_hidden(s_health_container,active!=0);
-    layer_set_hidden(s_forecast_container,active!=1);
-    layer_set_hidden(s_calendar_container,active!=2);
+  for(int i=0;i<4;i++) {
+    int x=(i%2)*100;
+    if(i<2)layer_set_frame(s_corner_layers[i],GRect(x,0,100,60));
+    else layer_set_frame(s_corner_layers[i],GRect(x,126,100,bottom_y-126));
+    bool legacy=(i==0&&original_left)||(i==1&&original_right)||
+      (i==2&&original_rings)||(i==3&&original_hr);
+    layer_set_hidden(s_corner_layers[i],legacy);
   }
-  for(int i=0;i<4;i++)if(s_corner_layers[i])
-    layer_set_hidden(s_corner_layers[i],!show_custom);
+
+  // Reuse the ORIGINAL health rings, distance label, heart icon, BPM and
+  // HR graph with their original pixel locations instead of approximations.
+  layer_set_frame(s_health_container,GRect(0,126,200,96));
+  layer_set_hidden(s_health_container,!original_rings&&!original_hr);
+  int rise=bottom_y<214?214-bottom_y:0;
+  layer_set_frame(s_goals_canvas,GRect(15,16-rise,72,72));
+  layer_set_frame(text_layer_get_layer(s_dist_layer),GRect(12,34-rise,76,35));
+  layer_set_hidden(s_goals_canvas,!original_rings);
+  layer_set_hidden(text_layer_get_layer(s_dist_layer),s_corner_metric[2]!=30);
+  layer_set_hidden(bitmap_layer_get_layer(s_heart_layer),!original_hr);
+  layer_set_hidden(text_layer_get_layer(s_hr_layer),!original_hr);
+  layer_set_hidden(s_hr_graph_layer,!original_hr);
+
+  // The retired full-width bottom panel is never displayed.
+  layer_set_hidden(s_forecast_container,true);
+  layer_set_hidden(s_calendar_container,true);
   if(s_battery_layer)layer_set_hidden(s_battery_layer,s_battery_style==0);
 }
