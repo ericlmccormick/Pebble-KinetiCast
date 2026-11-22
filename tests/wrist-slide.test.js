@@ -9,8 +9,8 @@ assert.equal(manifest.pebble.uuid,'f714c3de-9a38-4c4f-9486-2290af72e3b5');
 const flick=main.slice(main.indexOf('static void execute_panel_transition(bool alternate_view) {'),
  main.indexOf('static bool calendar_takeover_due_at'));
 assert.match(flick,/s_view_is_swapped=alternate_view/);
-assert.match(flick,/move_panel\(s_forecast_container,show_weather\?126:228\);/);
-assert.match(flick,/move_panel\(s_calendar_container,show_calendar\?126:228\);/);
+assert.match(flick,/move_panel\(s_forecast_container,show_weather\?134:228\);/);
+assert.match(flick,/move_panel\(s_calendar_container,show_calendar\?134:228\);/);
 assert.doesNotMatch(flick,/corner_apply_visibility\(|layer_set_hidden\(s_weather_arc_layer|s_center_view=/,
  'Wrist flick must not mutate normal layout or the original top-right weather');
 assert.match(main,/animation_set_duration\(\(Animation \*\)animation, 300\)/);
