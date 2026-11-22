@@ -4,15 +4,16 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('src/pkjs/index.js','utf8');
 const manifest = require('../package.json');
+const cornerCatalog = require('../src/pkjs/corner-catalog');
 assert.match(manifest.version,/^[0-9]+[.][0-9]+[.][0-9]+$/);
 const begin=source.indexOf('var clayConfig =');
 const end=source.indexOf('var clay = new Clay',begin);
 assert.ok(begin>=0 && end>begin);
-const config=vm.runInNewContext(source.slice(begin,end)+'\nclayConfig',{});
+const config=vm.runInNewContext(source.slice(begin,end)+'\nclayConfig',{cornerCatalog});
 const groups=config.filter(x=>x.type==='section');
 const names=groups.map(g=>g.items.find(x=>x.type==='heading').defaultValue);
 assert.deepEqual(Array.from(names),[
-  'Appearance','Watchface','Weather','Calendar','Wrist Gestures','Health & Sleep','Power & Diagnostics'
+  'Appearance','Complications','Watchface','Weather','Calendar','Wrist Gestures','Health & Sleep','Power & Diagnostics'
 ]);
 const settings=groups.flatMap(g=>g.items.filter(x=>x.messageKey));
 const byKey=Object.fromEntries(settings.map(x=>[x.messageKey,x]));
@@ -25,7 +26,9 @@ const expected = [
   'DISTANCE_UNIT','HR_GRAPH_WINDOW','HEALTH_LIVE_UPDATES','SHOW_SLEEP',
   'SLEEP_BRIEF_SECONDS'
 ];
-assert.deepEqual(Array.from(settings.map(x=>x.messageKey)),expected,'Settings follow workflow order');
+assert.deepEqual(Array.from(settings.filter(x=>!x.messageKey.startsWith('CORNER_')&&
+  !x.messageKey.startsWith('BATTERY_')).map(x=>x.messageKey)),expected,
+  'Legacy settings stay in workflow order');
 for(const key of expected) assert.ok(byKey[key],key);
 function values(key) {return Array.from(byKey[key].options.map(x=>String(x.value)));}
 assert.deepEqual(values('DEFAULT_VIEW'),['0','1','2']);
@@ -56,3 +59,14 @@ for(const key of ['WEATHER_UPDATES_ENABLED','WEATHER_PROVIDER','USE_GPS',
   assert.ok(clay.includes(key),key+' conditional visibility');
 }
 console.log('Task-based settings layout, option ordering and saved values passed');
+
+for(const slot of cornerCatalog.slots) {
+  for(const key of ['GROUP','PLUGIN_SPEC','INDEX']) {
+    assert.ok(byKey['CORNER_'+slot+'_'+key],'Missing '+slot+' '+key);
+  }
+  for(const group of Object.keys(cornerCatalog.groups))
+    assert.ok(byKey['CORNER_'+slot+'_'+group.toUpperCase()]);
+  assert.equal(cornerCatalog.validMetric('health',30),true);
+}
+assert.deepEqual(Array.from(byKey.BATTERY_BAR_STYLE.options,o=>o.value),['0','1','2','3']);
+console.log('Corner complication catalog controls and legacy defaults passed');
