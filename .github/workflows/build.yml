@@ -41,6 +41,9 @@ jobs:
           node --check src/pkjs/corner-plugins.js
           node --check src/pkjs/corner-weather.js
           node tests/corners.test.js
+          node --check src/pkjs/weather-push.js
+          node --check src/pkjs/weather-delivery.js
+          node tests/weather-push.test.js
           node tests/settings-delivery.test.js
           node --check src/pkjs/universal_tts.js
           node -e "const p=require('./package.json');if(p.pebble.sdkVersion!=='3'||!p.pebble.targetPlatforms.includes('emery'))process.exit(1)"
