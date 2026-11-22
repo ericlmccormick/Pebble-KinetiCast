@@ -1,5 +1,7 @@
 var Clay = require('pebble-clay');
 var customClay = require('./custom-clay');
+var cornerCatalog = require('./corner-catalog');
+var cornerPlugins = require('./corner-plugins');
 
 // ==============================================================================
 // SECTION: CLAY CONFIGURATION (SETTINGS MENU)
@@ -143,6 +145,42 @@ var clayConfig = [
   { "type": "submit", "defaultValue": "Save Settings" }
 ];
 
+
+// Four independent corner selectors. Each category has a separate Clay select,
+// so a category change immediately exposes only relevant choices.
+var cornerItems = [
+  {type:'heading',defaultValue:'Complications'},
+  {type:'select',messageKey:'CORNER_MODE',label:'Layout',
+   defaultValue:'0',options:[{label:'Classic (unchanged)',value:'0'},
+     {label:'Custom (four corners)',value:'1'}]},
+  {type:'text',id:'corner-info',defaultValue:
+   'All corners may display any type of reading. Classic retains the existing full-width bottom-panel behavior.'}
+];
+cornerCatalog.slots.forEach(function(slot){
+  var title={TL:'Top Left',TR:'Top Right',BL:'Bottom Left',BR:'Bottom Right'}[slot];
+  var base='CORNER_'+slot+'_';
+  cornerItems.push({type:'heading',id:'corner-title-'+slot,defaultValue:title,size:5});
+  cornerItems.push({type:'select',messageKey:base+'GROUP',label:'Category',
+    defaultValue:cornerCatalog.defaults[slot].group,options:cornerCatalog.groupOptions()});
+  Object.keys(cornerCatalog.groups).forEach(function(group){
+    cornerItems.push({type:'select',messageKey:base+group.toUpperCase(),
+      label:'Reading',defaultValue:String(group===cornerCatalog.defaults[slot].group ?
+        cornerCatalog.defaults[slot].metric:cornerCatalog.groups[group][0][0]),
+      options:cornerCatalog.metricOptions(group)});
+  });
+  cornerItems.push({type:'select',messageKey:base+'PLUGIN',
+    label:'Installed plugin reading',defaultValue:'',options:[
+      {label:'Choose a published plugin field',value:''}]});
+  cornerItems.push({type:'slider',messageKey:base+'INDEX',
+    label:'Plugin instance (0 = first)',defaultValue:0,min:0,max:20,step:1});
+});
+cornerItems.push({type:'select',messageKey:'BATTERY_BAR_STYLE',label:'Bottom Battery Bar',
+  defaultValue:'1',options:[
+    {label:'Off',value:'0'}, {label:'Slim (original)',value:'1'},
+    {label:'Enhanced',value:'2'}, {label:'Bar + Percentage',value:'3'}
+  ]});
+clayConfig.splice(2,0,{type:'section',items:cornerItems});
+
 var clay = new Clay(clayConfig, customClay, { autoHandleEvents: false });
 var calendarSubscription = null;
 var calendarEvents = [];
@@ -220,7 +258,7 @@ function nextCalendarEvent() {
 }
 function calendarFeaturesEnabled(settings) {
   settings = settings || readSettings();
-  return Number(settings.DEFAULT_VIEW || 0) === 2 ||
+  return Number(settings.DEFAULT_VIEW || 0) === 2 || cornerCatalog.usesCalendar(settings) ||
     Number(settings.SHAKE_ACTION || 0) === 3 ||
     settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false);
 }
@@ -298,6 +336,7 @@ function startCalendarSource() {
   }
   if(!calendarTimer)calendarTimer=setInterval(function(){
     if (calendarFeaturesEnabled()) startCalendarSource();
+  cornerPlugins.apply(Pebble,readSettings(),cornerCatalog);
     else stopCalendarSource();
   },CALENDAR_READ_INTERVAL_MS);
 }
@@ -1206,6 +1245,8 @@ Pebble.addEventListener('showConfiguration', function(e) {
   }
   
   updateCalendarSelectOptions();
+  cornerPlugins.populatePluginOptions(Pebble,clayConfig,settings);
+  clay=new Clay(clayConfig,customClay,{autoHandleEvents:false});
   Pebble.openURL(clay.generateUrl());
 });
 
@@ -1259,13 +1300,20 @@ Pebble.addEventListener('webviewclosed', function(e) {
     'SHAKE_SENSITIVITY': normalizeShakeThreshold(settings.SHAKE_SENSITIVITY),
     'SHAKE_LENGTH': settings.SHAKE_LENGTH === undefined ? 2 : parseInt(settings.SHAKE_LENGTH, 10),
     'HR_GRAPH_WINDOW': parseInt(settings.HR_GRAPH_WINDOW, 10) || 20,
-    'SLEEP_BRIEF_SECONDS': parseInt(settings.SLEEP_BRIEF_SECONDS, 10) || 0
+    'SLEEP_BRIEF_SECONDS': parseInt(settings.SLEEP_BRIEF_SECONDS, 10) || 0,
+    'CORNER_MODE': Number(settings.CORNER_MODE||0) === 1 ? 1 : 0,
+    'BATTERY_BAR_STYLE': Number(settings.BATTERY_BAR_STYLE||1)
   };
+  cornerCatalog.slots.forEach(function(slot) {
+    appDict['CORNER_'+slot] = cornerCatalog.chosenMetric(settings,slot);
+  });
   
   Pebble.sendAppMessage(appDict, function() {
     // The watch must receive the persistent-calendar controls before a next
     // event is delivered, otherwise the takeover can be evaluated as disabled.
     syncCalendarConfiguration(previousSettings, settings);
+    cornerPlugins.apply(Pebble,settings,cornerCatalog);
+    if (cornerCatalog.usesCalendar(settings)) startCalendarSource();
     // Reopen shared weather only when provider or display units actually change.
     var weatherChanged = weatherUpdatesEnabled(previousSettings) !== weatherUpdatesEnabled(settings) ||
       chosenWeatherSource(previousSettings) !== chosenWeatherSource(settings) ||
@@ -1273,7 +1321,12 @@ Pebble.addEventListener('webviewclosed', function(e) {
       desiredDistanceUnit(previousSettings) !== desiredDistanceUnit(settings) ||
       String(previousSettings.MANUAL_LOCATION||'') !== String(settings.MANUAL_LOCATION||'') ||
       settingEnabled(previousSettings.USE_GPS,true) !== settingEnabled(settings.USE_GPS,true);
-    if (weatherChanged) {
+    if (weatherChanged || JSON.stringify(cornerCatalog.slots.map(function(slot){
+      return cornerCatalog.chosenMetric(settings,slot);
+    })) !== JSON.stringify(cornerCatalog.slots.map(function(slot){
+      return cornerCatalog.chosenMetric(previousSettings,slot);
+    }))) {
+      weatherPlusLastPayload = null;
       lastWeatherSuccess = 0;
       stopWeatherPlus();
       if (weatherUpdatesEnabled(settings)) {
