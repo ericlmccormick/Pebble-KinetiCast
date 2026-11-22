@@ -298,6 +298,12 @@
           "name": "LOGO",
           "targetPlatforms": null,
           "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_COMPACT_ATLAS.png",
+          "name": "COMPACT_WEATHER_ATLAS",
+          "type": "bitmap",
+          "targetPlatforms": null
         }
       ]
     },
