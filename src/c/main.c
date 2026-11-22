@@ -1636,7 +1636,17 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
   if (weather_changed) layer_mark_dirty(s_weather_arc_layer);
   
   if (theme_changed) update_theme_colors(); 
-  if (layout_changed) { s_panel_override = -1; execute_panel_transition(false); corner_sync_seconds(); corner_redraw(); }
+  if (layout_changed) {
+    s_panel_override=-1;
+    execute_panel_transition(false);
+    // A wrist-flick slide must not alter layout, but an explicit settings
+    // change MUST reapply layer visibility. Otherwise a previously hidden
+    // clock/date stays hidden after switching back from Next Event/3-Day.
+    corner_apply_visibility();
+    if(s_weather_arc_layer)layer_mark_dirty(s_weather_arc_layer);
+    corner_sync_seconds();
+    corner_redraw();
+  }
   update_persistent_calendar();
   update_calendar_countdown(); 
   
