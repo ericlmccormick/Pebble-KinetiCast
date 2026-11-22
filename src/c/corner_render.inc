@@ -57,12 +57,12 @@ static void corner_text(GContext *ctx,const char *text,int y,int h,GFont font,
 }
 static void corner_numeric(GContext *ctx,GRect b,const char *label,const char *value,const char *aux) {
   graphics_context_set_text_color(ctx,is_dark_theme()?GColorWhite:GColorBlack);
-  corner_text(ctx,label,3,20,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GTextAlignmentCenter,b.size.w);
-  int mainY=b.size.h<=75?24:30;
+  corner_text(ctx,label,1,18,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GTextAlignmentCenter,b.size.w);
+  int mainY=(aux&&aux[0])?18:23;
   GFont font=fonts_get_system_font(strlen(value)>9?FONT_KEY_GOTHIC_18_BOLD:
     strlen(value)>6?FONT_KEY_GOTHIC_24_BOLD:FONT_KEY_GOTHIC_28_BOLD);
-  corner_text(ctx,value,mainY,34,font,GTextAlignmentCenter,b.size.w);
-  if(aux&&aux[0])corner_text(ctx,aux,b.size.h-22,20,fonts_get_system_font(FONT_KEY_GOTHIC_14),
+  corner_text(ctx,value,mainY,32,font,GTextAlignmentCenter,b.size.w);
+  if(aux&&aux[0])corner_text(ctx,aux,b.size.h-20,18,fonts_get_system_font(FONT_KEY_GOTHIC_14),
     GTextAlignmentCenter,b.size.w);
 }
 static void corner_gauge(GContext *ctx,GRect b,int percent,GColor foreground) {
@@ -323,18 +323,30 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
     snprintf(value,sizeof(value),"%d%s",n,unit);
   }
   if(metric==38){
-    corner_numeric(ctx,b,corner_label(metric),value,NULL);
-    corner_heart_graph(ctx,b);return;
+    graphics_context_set_text_color(ctx,fg);
+    corner_text(ctx,"HEART RATE",0,18,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+      GTextAlignmentCenter,b.size.w);
+    corner_text(ctx,value,16,30,fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+      GTextAlignmentCenter,b.size.w);
+    corner_heart_graph(ctx,b);
+    return;
   }
   corner_numeric(ctx,b,corner_label(metric),value,NULL);
 }
 static void corner_apply_visibility(void) {
   if(!s_weather_icon_layer || !s_health_container || !s_corner_layers[0])return;
   bool custom=s_corner_mode!=0;
-  layer_set_hidden(bitmap_layer_get_layer(s_weather_icon_layer),custom);
-  layer_set_hidden(s_weather_arc_layer,custom);
   bool legacy_bottom=!custom||s_view_is_swapped||s_calendar_takeover_active;
-  if(!legacy_bottom){
+  bool show_custom=custom&&!legacy_bottom;
+  // The two top corners, date and clock, and bottom corners never overlap.
+  // During a temporary full-width view, restore the entire legacy arrangement.
+  layer_set_frame(text_layer_get_layer(s_date_layer),show_custom?
+    GRect(0,74,200,26):GRect(0,52,200,30));
+  layer_set_frame(text_layer_get_layer(s_time_layer),show_custom?
+    GRect(0,96,200,54):GRect(0,76,200,60));
+  layer_set_hidden(bitmap_layer_get_layer(s_weather_icon_layer),show_custom);
+  layer_set_hidden(s_weather_arc_layer,show_custom);
+  if(show_custom){
     layer_set_hidden(s_health_container,true);
     layer_set_hidden(s_forecast_container,true);
     layer_set_hidden(s_calendar_container,true);
@@ -346,6 +358,6 @@ static void corner_apply_visibility(void) {
     layer_set_hidden(s_calendar_container,active!=2);
   }
   for(int i=0;i<4;i++)if(s_corner_layers[i])
-    layer_set_hidden(s_corner_layers[i],!custom||((i>=2)&&legacy_bottom));
+    layer_set_hidden(s_corner_layers[i],!show_custom);
   if(s_battery_layer)layer_set_hidden(s_battery_layer,s_battery_style==0);
 }
