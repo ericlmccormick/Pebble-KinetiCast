@@ -2,7 +2,9 @@
 
 ## Modular complications (experimental feature branch)
 
-**Moon Image complication:** Under Sun & Moon, choose **Moon image + illumination** in any corner. The watch draws the correct waxing/right-lit or waning/left-lit shape, using its clock and a lunar-cycle estimate. Moon Phase and Moon Illumination text options remain available, and the graphic needs no additional phone or provider subscription. Event and weather slide panels now stop 8 pixels lower for more clock clearance.
+**Moon Image complications:** Under Sun & Moon, choose **Moon image** (larger disk only, no label or percentage) or **Moon image + illumination** (large disk with percentage, no label). The watch draws waxing/right-lit and waning/left-lit shapes locally from its clock and a lunar-cycle estimate, without phone or provider updates. The Moon Phase and Moon Illumination text options remain available.
+
+**Center/forecast corrections:** Center Time Only and Time + Date now restore their layers when selected after the other center modes. The 3-day center uses 32×32 RGBA forecast icons with Pebble's transparency-aware compositing, instead of black-backed 24px images. Wrist slides keep the original 64px artwork; event/weather panels stop 8px lower to leave clock clearance.
 
 **Weather transport:** The active watchface subscribes to Weather+ on the phone.
 Only the fields used by currently selected weather/astronomy complications are
