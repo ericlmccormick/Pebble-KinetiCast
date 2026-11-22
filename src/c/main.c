@@ -186,8 +186,18 @@ static bool is_dark_theme() {
   return solar_theme_dark(s_theme_mode);
 }
 
+static bool weather_complications_needed(void) {
+  // A selected weather/astronomy corner, the weather center, or the optional
+  // three-day wrist preview activates phone-pushed weather automatically.
+  if(s_center_view==3||s_shake_action==0)return true;
+  for(int i=0;i<4;i++) {
+    int m=s_corner_metric[i];
+    if((m>=1&&m<=28)||(m>=70&&m<=73))return true;
+  }
+  return false;
+}
 static void request_weather() {
-  if (!s_weather_updates_enabled) return;
+  if(!weather_complications_needed())return;
   time_t now = time(NULL);
   if (!s_connected || (s_last_weather_request && now - s_last_weather_request < 60)) return;
   // Request a one-time snapshot on launch/reconnect only. Weather+ pushes
