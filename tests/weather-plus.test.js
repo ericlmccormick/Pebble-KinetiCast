@@ -9,6 +9,8 @@ assert.ok(start>=0&&end>start);
 let config={WEATHER_PROVIDER:'weatherplus',DISTANCE_UNIT:'mi'};
 let sent=[];
 const context={
+  cornerCatalog:require('../src/pkjs/corner-catalog'),
+  cornerWeather:require('../src/pkjs/corner-weather'),
   Date,Math,JSON,Number,isFinite,parseInt,console:{log(){}},
   readSettings:()=>config,desiredDistanceUnit:(s)=>s.DISTANCE_UNIT||'mi',
   settingEnabled:(v,f)=>v==null?f:!!v,
