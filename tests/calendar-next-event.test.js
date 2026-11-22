@@ -10,7 +10,11 @@ assert.ok(manifest.pebble.usesPermissions.includes('Calendar'),'native Calendar 
 assert.match(source,/category:'calendar',item:'event'/);
 assert.match(source,/messageKey": "CALENDAR_FILTER"/);
 assert.match(source,/Show Next Event \(7s\)/);
-assert.match(c,/s_default_view == 2 \? 126 : 222/);
+assert.match(c,/s_center_view=0/);
+assert.match(c,/MESSAGE_KEY_CENTER_VIEW/);
+const renderer=fs.readFileSync('src/c/corner_render.inc','utf8');
+assert.match(renderer,/if\(s_calendar_takeover_active\)return 2;/);
+assert.match(renderer,/if\(mode==2\) \{/);
 assert.match(c,/MESSAGE_KEY_NEXT_EVENT_START/);
 assert.match(c,/update_calendar_countdown\(void\)/);
 const start=source.indexOf('var calendarSubscription = null;');
