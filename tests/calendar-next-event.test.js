@@ -23,6 +23,7 @@ let onData;
 let subscriptions=0;
 let storage={};
 const ctx={
+ cornerCatalog:require('../src/pkjs/corner-catalog'),
  console:{log(){}},Date,Math,JSON,Number,isFinite,parseInt,
  localStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>{storage[k]=v;}},
  readSettings:()=>settings,
