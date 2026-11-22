@@ -148,7 +148,8 @@
       "CORNER_TL_PLUGIN_SPEC": 134,
       "CORNER_TR_PLUGIN_SPEC": 135,
       "CORNER_BL_PLUGIN_SPEC": 136,
-      "CORNER_BR_PLUGIN_SPEC": 137
+      "CORNER_BR_PLUGIN_SPEC": 137,
+      "CENTER_VIEW": 138
     },
     "projectType": "native",
     "resources": {
