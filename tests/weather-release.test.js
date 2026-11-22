@@ -30,6 +30,8 @@ const context = {
     if(key === './corner-catalog') return require('../src/pkjs/corner-catalog');
     if(key === './corner-plugins') return require('../src/pkjs/corner-plugins');
     if(key === './corner-weather') return require('../src/pkjs/corner-weather');
+    if(key === './weather-push') return require('../src/pkjs/weather-push');
+    if(key === './weather-delivery') return require('../src/pkjs/weather-delivery');
     if(key === 'pebble-clay') return function(){};
     return function(){};
   },
