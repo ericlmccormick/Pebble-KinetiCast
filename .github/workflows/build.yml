@@ -43,6 +43,7 @@ jobs:
           node tests/corners.test.js
           node tests/wrist-slide.test.js
           node tests/moon-image.test.js
+          node tests/center-forecast.test.js
           node --check src/pkjs/weather-push.js
           node --check src/pkjs/weather-delivery.js
           node tests/weather-push.test.js
