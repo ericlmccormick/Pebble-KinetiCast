@@ -8,6 +8,10 @@ const end = code.indexOf('function getWeather(', start);
 assert.ok(start >= 0 && end > start, 'Provider router not found');
 const requests = [];
 const context = {
+  weatherDeliveryFactory:require('../src/pkjs/weather-delivery'),
+  weatherPush:require('../src/pkjs/weather-push'),
+  cornerCatalog:require('../src/pkjs/corner-catalog'),
+  Pebble:{sendAppMessage(){}},
   weatherAutoFallback: null,
   armWeatherWatchdog: function() {},
   fetchOpenWeather: () => requests.push('openweathermap'),
