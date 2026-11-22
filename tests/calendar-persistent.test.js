@@ -56,8 +56,12 @@ assert.match(native, /\(desired_transition - \(uint32_t\)now\) \* 1000/);
 assert.match(native, /next_transition > 0 && next_transition <= 1800/);
 assert.match(native, /update_persistent_calendar\(\);\s*update_calendar_countdown\(\);/);
 const renderer=fs.readFileSync('src/c/corner_render.inc','utf8');
-assert.match(renderer,/if\(s_calendar_takeover_active\)return 2;/,
-  'Persistent event takes over only the configurable center');
+assert.match(native,/bool show_calendar=s_calendar_takeover_active\|\|/,
+  'Persistent event appears in the sliding bottom overlay');
+assert.match(native,/move_panel\(s_calendar_container,show_calendar\?126:228\);/,
+  'Persistent calendar slides up from the bottom and down again');
+assert.match(renderer,/return s_center_view;/,
+  'Event overlay does not replace the chosen center or clock');
 assert.match(native, /&& !s_calendar_takeover_active\)/);
 assert.match(native, /if \(!s_shake_test_panel \|\| s_calendar_takeover_active\) return;/);
 assert.match(native, /persist_write_bool\(PERSIST_KEY_PERSISTENT_CALENDAR, s_persistent_calendar_enabled\)/);
