@@ -337,7 +337,6 @@ function startCalendarSource() {
   }
   if(!calendarTimer)calendarTimer=setInterval(function(){
     if (calendarFeaturesEnabled()) startCalendarSource();
-  cornerPlugins.apply(Pebble,readSettings(),cornerCatalog);
     else stopCalendarSource();
   },CALENDAR_READ_INTERVAL_MS);
 }
@@ -1228,6 +1227,7 @@ Pebble.addEventListener('ready', function() {
   if (weatherUpdatesEnabled() && chosenWeatherSource(readSettings()) === 'weatherplus') startWeatherPlus();
   else if (weatherUpdatesEnabled()) getWeather();
   if (calendarFeaturesEnabled()) startCalendarSource();
+  cornerPlugins.apply(Pebble,readSettings(),cornerCatalog);
 });
 
 Pebble.addEventListener('appmessage', function(e) {
