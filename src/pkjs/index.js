@@ -2,6 +2,7 @@ var Clay = require('pebble-clay');
 var customClay = require('./custom-clay');
 var cornerCatalog = require('./corner-catalog');
 var cornerPlugins = require('./corner-plugins');
+var cornerWeather = require('./corner-weather');
 
 // ==============================================================================
 // SECTION: CLAY CONFIGURATION (SETTINGS MENU)
@@ -1083,6 +1084,9 @@ function applyWeatherPlus(data) {
   if (uv !== null && uv >= 0 && uv < 40) dict.UV_INDEX = Math.round(uv);
   // Shared plugin already caches forecasts. Avoid transmitting identical
   // payloads repeatedly; resync after restart/reconnect through a fresh setup.
+  // Only expand transfer payload when the custom layout needs additional data.
+  if (cornerCatalog.usesWeather(readSettings()))
+    cornerWeather.augment(dict,props,Math.floor(Date.now()/1000));
   var signature = JSON.stringify(dict);
   if (signature === weatherPlusLastPayload) {
     weatherPlusLastData = Date.now();
@@ -1113,11 +1117,24 @@ function startWeatherPlus() {
     getWeather(true,true); return;
   }
   try {
+    var requested=['temperature','uv_index','condition_code','hourly_is_day',
+      'hourly_weather_code','daily_high','daily_low','daily_weather_code',
+      'utc_offset','updated_at'];
+    if (cornerCatalog.usesWeather(readSettings())) requested=requested.concat([
+      'feels_like','humidity','wind_speed','wind_gust','hourly_feels_like',
+      'hourly_humidity','hourly_wind_speed','hourly_wind_gust',
+      'hourly_dew_point','hourly_pressure','hourly_cloud_cover',
+      'hourly_visibility','hourly_precipitation','hourly_temperature',
+      'aqi','pm25','pm10','ozone','hourly_aqi','hourly_pm25','hourly_pm10',
+      'hourly_ozone','wave_height','wave_period','swell_wave_height',
+      'sea_temperature','hourly_wave_height','hourly_wave_period',
+      'hourly_swell_wave_height','hourly_sea_temperature',
+      'sunrise','sunset','daily_sunrise','daily_sunset',
+      'alert_count','alert_headline'
+    ]);
     weatherPlusSubscription = Pebble.subscribeToSource({
       category:'weather',item:'location',plugin:WEATHER_PLUS_UUID,
-      properties:['temperature','uv_index','condition_code','hourly_is_day',
-        'hourly_weather_code','daily_high','daily_low','daily_weather_code',
-        'utc_offset','updated_at'],
+      properties:requested,
       onData:applyWeatherPlus,
       onError:function(err) {
         console.log('KinetiCast: Weather+ source error: '+JSON.stringify(err));
