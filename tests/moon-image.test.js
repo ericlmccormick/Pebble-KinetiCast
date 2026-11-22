@@ -7,7 +7,7 @@ const source=fs.readFileSync('src/c/corner_render.inc','utf8');
 const main=fs.readFileSync('src/c/main.c','utf8');
 const clock=Date.UTC(2000,0,6,18,14,0)/1000;
 const cycle=2551443;
-const phase=(time)=>Math.floor((((time-clock)%cycle+cycle)%cycle)*1000/cycle);
+const phase=(time)=>Math.floor(((((Math.trunc(time)-clock)%cycle)+cycle)%cycle)*1000/cycle);
 const illumination=p=>Math.round(50*(1-Math.cos(2*Math.PI*p/1000)));
 assert.ok(catalog.groups.astronomy.some(e=>e[0]===76&&/Moon image/i.test(e[1])),
   'New Moon Image option is exposed under Sun & Moon');
