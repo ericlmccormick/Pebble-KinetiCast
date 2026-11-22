@@ -24,7 +24,8 @@ var groups = {
   ],
   clock: [
     [60,'Day and date'], [61,'Week number'], [62,'Day of year'],
-    [63,'Year progress'], [64,'Seconds'], [65,'Alternate time zone (future)']
+    [63,'Year progress'], [64,'Seconds'], [65,'Alternate time zone (future)'],
+    [66,'Current time']
   ],
   astronomy: [
     [70,'Sunrise'], [71,'Sunset'], [72,'Daylight remaining'],
@@ -67,21 +68,43 @@ function chosenMetric(settings,slot) {
     defaults[slot].metric : groups[group][0][0];
   return Number(value);
 }
+// The only layout is configurable. Existing installations retain their four
+// saved corners; new installs get the original icon/gauge/rings/heart arrangement.
+function centerView(settings) {
+  var n=Number(settings.CENTER_VIEW);
+  return n>=0&&n<=3?n:0;
+}
+function activeMetrics(settings) {
+  return slots.map(function(slot){return chosenMetric(settings,slot);});
+}
+function hasMetric(settings,check) {
+  return activeMetrics(settings).some(check);
+}
 function usesCalendar(settings) {
-  return Number(settings.CORNER_MODE||0)===4 ||
-    (Number(settings.CORNER_MODE||0)===1 &&
-    slots.some(function(slot){var n=chosenMetric(settings,slot);return n>=50&&n<=52;}));
+  return centerView(settings)===2 || hasMetric(settings,function(n){return n>=50&&n<=52;});
 }
 function usesWeather(settings) {
-  var mode=Number(settings.CORNER_MODE||0);
-  return mode===2||mode===4||(mode===1 &&
-    slots.some(function(slot){var n=chosenMetric(settings,slot);return n>=1&&n<=28;}));
+  return centerView(settings)===3 || Number(settings.SHAKE_ACTION||0)===0 ||
+    hasMetric(settings,function(n){return n>=1&&n<=28 || n>=70&&n<=73;});
+}
+function usesHealth(settings) {
+  return hasMetric(settings,function(n){return n>=30&&n<=42;});
+}
+function usesSleep(settings) {
+  return hasMetric(settings,function(n){return n>=39&&n<=41;});
+}
+function usesDistance(settings) {
+  return hasMetric(settings,function(n){return n===30||n===34;});
+}
+function usesHrGraph(settings) {
+  return hasMetric(settings,function(n){return n===38;});
 }
 function usesPlugins(settings) {
-  return Number(settings.CORNER_MODE||0)===1 &&
-    slots.some(function(slot){var n=chosenMetric(settings,slot);return n>=90&&n<=95;});
+  return hasMetric(settings,function(n){return n>=90&&n<=95;});
 }
 module.exports={groups:groups,labels:labels,slots:slots,defaults:defaults,
   groupOptions:groupOptions,metricOptions:metricOptions,validMetric:validMetric,
-  chosenMetric:chosenMetric,usesCalendar:usesCalendar,usesWeather:usesWeather,
+  chosenMetric:chosenMetric,centerView:centerView,activeMetrics:activeMetrics,
+  usesCalendar:usesCalendar,usesWeather:usesWeather,usesHealth:usesHealth,
+  usesSleep:usesSleep,usesDistance:usesDistance,usesHrGraph:usesHrGraph,
   usesPlugins:usesPlugins};
