@@ -28,11 +28,15 @@ assert.doesNotMatch(renderer,/if\(s_view_is_swapped\)return s_panel_override/,
 assert.match(renderer,/static void slide_panel_background\(/,
  'Overlay needs an opaque background above bottom complications');
 assert.match(renderer,/draw_compact_forecast_icon\(ctx,icons\[i\],x\+21,18\)/);
-assert.match(renderer,/draw_compact_forecast_icon\(ctx,s_d1_ic,22,33\)/);
+assert.match(main,/layer_set_hidden\(bitmap_layer_get_layer\(s_f_icon1_layer\),false\)/,
+  'The flick panel reuses original 64px image layers');
 assert.doesNotMatch(renderer,/graphics_draw_bitmap_in_rect\(ctx,icons\[i\]/,
  'Large bitmaps get cropped, NOT rescaled by Pebble graphics_draw_bitmap_in_rect');
-assert.match(main,/layer_set_hidden\(bitmap_layer_get_layer\(s_f_icon1_layer\),true\)/);
+assert.match(renderer,/gbitmap_create_as_sub_bitmap/,'24px center icons use pre-scaled artwork');
+assert.match(main,/compact_icons_init\(\)/,'Atlas is loaded once');
+assert.match(main,/compact_icons_deinit\(\)/,'Atlas is freed on unload');
+assert.ok(manifest.pebble.resources.media.some(item=>item.name==='COMPACT_WEATHER_ATLAS'));
 assert.match(renderer,/layer_set_hidden\(s_forecast_container,false\)/,
  'Do not hide overlay until slide-down is complete');
 assert.match(renderer,/layer_set_hidden\(s_weather_arc_layer,!original_right\)/);
-console.log('Wrist flick slides over bottom only; center and top weather stay unchanged; forecast icons are compact');
+console.log('Wrist flick uses original 64px icons in bottom slide; center uses real 24px artwork');
