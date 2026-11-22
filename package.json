@@ -1,245 +1,326 @@
 {
-    "author": "Eric McCormick",
-    "dependencies": {
-        "pebble-clay": "^1.0.4"
+  "author": "Eric McCormick",
+  "dependencies": {
+    "pebble-clay": "^1.0.4"
+  },
+  "keywords": [],
+  "name": "kineticast",
+  "pebble": {
+    "capabilities": [
+      "location",
+      "configurable",
+      "health"
+    ],
+    "displayName": "KinetiCast - Health and Weather",
+    "enableMultiJS": true,
+    "messageKeys": {
+      "API_KEY": 13,
+      "CONDITIONS": 1,
+      "DAY1_HIGH": 17,
+      "DAY1_ICON": 19,
+      "DAY1_LOW": 18,
+      "DAY2_HIGH": 20,
+      "DAY2_ICON": 22,
+      "DAY2_LOW": 21,
+      "DAY3_HIGH": 23,
+      "DAY3_ICON": 25,
+      "DAY3_LOW": 24,
+      "DEFAULT_VIEW": 16,
+      "IS_NIGHT": 9,
+      "MANUAL_LOCATION": 28,
+      "REQUEST_WEATHER": 14,
+      "SHOW_SLEEP": 12,
+      "TEMP_CURRENT": 0,
+      "TEMP_HIGH": 2,
+      "TEMP_LOW": 3,
+      "THEME_MODE": 15,
+      "TIME_FORMAT": 6,
+      "UNITS": 4,
+      "UPDATE_FREQ": 10,
+      "USE_GPS": 27,
+      "UV_INDEX": 11,
+      "WEATHER_PROVIDER": 26,
+      "HR_GRAPH_WINDOW": 29,
+      "SLEEP_BRIEF_SECONDS": 30,
+      "TEMP_UNIT": 31,
+      "DISTANCE_UNIT": 32,
+      "COMMAND": 33,
+      "TEXT": 34,
+      "CHUNK": 35,
+      "SHAKE_ACTION": 36,
+      "SHAKE_SENSITIVITY": 37,
+      "SHAKE_LENGTH": 38,
+      "NEXT_EVENT_TITLE": 39,
+      "NEXT_EVENT_START": 40,
+      "NEXT_EVENT_STATUS": 41,
+      "CALENDAR_FILTER": 42,
+      "PERSISTENT_CALENDAR_ENABLE": 43,
+      "PERSISTENT_CALENDAR_MINUTES": 44,
+      "GESTURE_POWER_MODE": 45,
+      "HEALTH_LIVE_UPDATES": 46,
+      "WEATHER_UPDATES_ENABLED": 47,
+      "REQUEST_NEXT_EVENT": 48,
+      "VG_SUNRISE": 49,
+      "VG_SUNSET": 50,
+      "VG_NEXT_SUNRISE": 51,
+      "VG_NEXT_SUNSET": 52,
+      "CORNER_MODE": 53,
+      "BATTERY_BAR_STYLE": 54,
+      "CORNER_TL": 55,
+      "CORNER_TL_LABEL": 56,
+      "CORNER_TL_VALUE": 57,
+      "CORNER_TL_GROUP": 58,
+      "CORNER_TL_WEATHER": 59,
+      "CORNER_TL_ENVIRONMENT": 60,
+      "CORNER_TL_HEALTH": 61,
+      "CORNER_TL_CALENDAR": 62,
+      "CORNER_TL_CLOCK": 63,
+      "CORNER_TL_ASTRONOMY": 64,
+      "CORNER_TL_SYSTEM": 65,
+      "CORNER_TL_PLUGIN": 66,
+      "CORNER_TL_NONE": 67,
+      "CORNER_TL_INDEX": 68,
+      "CORNER_TR": 69,
+      "CORNER_TR_LABEL": 70,
+      "CORNER_TR_VALUE": 71,
+      "CORNER_TR_GROUP": 72,
+      "CORNER_TR_WEATHER": 73,
+      "CORNER_TR_ENVIRONMENT": 74,
+      "CORNER_TR_HEALTH": 75,
+      "CORNER_TR_CALENDAR": 76,
+      "CORNER_TR_CLOCK": 77,
+      "CORNER_TR_ASTRONOMY": 78,
+      "CORNER_TR_SYSTEM": 79,
+      "CORNER_TR_PLUGIN": 80,
+      "CORNER_TR_NONE": 81,
+      "CORNER_TR_INDEX": 82,
+      "CORNER_BL": 83,
+      "CORNER_BL_LABEL": 84,
+      "CORNER_BL_VALUE": 85,
+      "CORNER_BL_GROUP": 86,
+      "CORNER_BL_WEATHER": 87,
+      "CORNER_BL_ENVIRONMENT": 88,
+      "CORNER_BL_HEALTH": 89,
+      "CORNER_BL_CALENDAR": 90,
+      "CORNER_BL_CLOCK": 91,
+      "CORNER_BL_ASTRONOMY": 92,
+      "CORNER_BL_SYSTEM": 93,
+      "CORNER_BL_PLUGIN": 94,
+      "CORNER_BL_NONE": 95,
+      "CORNER_BL_INDEX": 96,
+      "CORNER_BR": 97,
+      "CORNER_BR_LABEL": 98,
+      "CORNER_BR_VALUE": 99,
+      "CORNER_BR_GROUP": 100,
+      "CORNER_BR_WEATHER": 101,
+      "CORNER_BR_ENVIRONMENT": 102,
+      "CORNER_BR_HEALTH": 103,
+      "CORNER_BR_CALENDAR": 104,
+      "CORNER_BR_CLOCK": 105,
+      "CORNER_BR_ASTRONOMY": 106,
+      "CORNER_BR_SYSTEM": 107,
+      "CORNER_BR_PLUGIN": 108,
+      "CORNER_BR_NONE": 109,
+      "CORNER_BR_INDEX": 110,
+      "WX_FEELS": 111,
+      "WX_HUMIDITY": 112,
+      "WX_WIND_SPEED": 113,
+      "WX_WIND_GUST": 114,
+      "WX_DEW_POINT": 115,
+      "WX_PRESSURE": 116,
+      "WX_CLOUD": 117,
+      "WX_VISIBILITY": 118,
+      "WX_RAIN_CHANCE": 119,
+      "WX_RAIN_ETA": 120,
+      "WX_AQI": 121,
+      "WX_PM25": 122,
+      "WX_PM10": 123,
+      "WX_OZONE": 124,
+      "WX_WAVE_HEIGHT": 125,
+      "WX_WAVE_PERIOD": 126,
+      "WX_SWELL_HEIGHT": 127,
+      "WX_SEA_TEMP": 128,
+      "WX_ALERT": 129,
+      "WX_SUNRISE": 130,
+      "WX_SUNSET": 131,
+      "WX_RAIN_TREND": 132,
+      "WX_TEMP_TREND": 133
     },
-    "keywords": [],
-    "name": "kineticast",
-    "pebble": {
-        "capabilities": [
-            "location",
-            "configurable",
-            "health"
-        ],
-        "displayName": "KinetiCast - Health and Weather",
-        "enableMultiJS": true,
-        "messageKeys": {
-            "API_KEY": 13,
-            "CONDITIONS": 1,
-            "DAY1_HIGH": 17,
-            "DAY1_ICON": 19,
-            "DAY1_LOW": 18,
-            "DAY2_HIGH": 20,
-            "DAY2_ICON": 22,
-            "DAY2_LOW": 21,
-            "DAY3_HIGH": 23,
-            "DAY3_ICON": 25,
-            "DAY3_LOW": 24,
-            "DEFAULT_VIEW": 16,
-            "IS_NIGHT": 9,
-            "MANUAL_LOCATION": 28,
-            "REQUEST_WEATHER": 14,
-            "SHOW_SLEEP": 12,
-            "TEMP_CURRENT": 0,
-            "TEMP_HIGH": 2,
-            "TEMP_LOW": 3,
-            "THEME_MODE": 15,
-            "TIME_FORMAT": 6,
-            "UNITS": 4,
-            "UPDATE_FREQ": 10,
-            "USE_GPS": 27,
-            "UV_INDEX": 11,
-            "WEATHER_PROVIDER": 26,
-            "HR_GRAPH_WINDOW": 29,
-            "SLEEP_BRIEF_SECONDS": 30,
-            "TEMP_UNIT": 31,
-            "DISTANCE_UNIT": 32,
-            "COMMAND": 33,
-            "TEXT": 34,
-            "CHUNK": 35,
-            "SHAKE_ACTION": 36,
-            "SHAKE_SENSITIVITY": 37,
-            "SHAKE_LENGTH": 38,
-            "NEXT_EVENT_TITLE": 39,
-            "NEXT_EVENT_START": 40,
-            "NEXT_EVENT_STATUS": 41,
-            "CALENDAR_FILTER": 42,
-            "PERSISTENT_CALENDAR_ENABLE": 43,
-            "PERSISTENT_CALENDAR_MINUTES": 44,
-            "GESTURE_POWER_MODE": 45,
-            "HEALTH_LIVE_UPDATES": 46,
-            "WEATHER_UPDATES_ENABLED": 47,
-            "REQUEST_NEXT_EVENT": 48,
-            "VG_SUNRISE": 49,
-            "VG_SUNSET": 50,
-            "VG_NEXT_SUNRISE": 51,
-            "VG_NEXT_SUNSET": 52
+    "projectType": "native",
+    "resources": {
+      "media": [
+        {
+          "file": "images/heart-32.png",
+          "name": "ICON_HEART",
+          "targetPlatforms": null,
+          "type": "bitmap"
         },
-        "projectType": "native",
-        "resources": {
-            "media": [
-                {
-                    "file": "images/heart-32.png",
-                    "name": "ICON_HEART",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_HEAVY_SNOW",
-                    "name": "ICON_HEAVY_SNOW",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_CLOUDY",
-                    "name": "ICON_CLOUDY",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_THUNDER_SHOWER",
-                    "name": "ICON_THUNDER_SHOWER",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_CLEAR_DAY",
-                    "name": "ICON_CLEAR_DAY",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_HEAVY_RAIN",
-                    "name": "ICON_HEAVY_RAIN",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_CLOUDY_SUN",
-                    "name": "ICON_CLOUDY_SUN",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_CLOUDY_NIGHT",
-                    "name": "ICON_CLOUDY_NIGHT",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_DUST",
-                    "name": "ICON_DUST",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_FOG",
-                    "name": "ICON_FOG",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_HAZE",
-                    "name": "ICON_HAZE",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_RAIN",
-                    "name": "ICON_RAIN",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_LIGHT_RAIN",
-                    "name": "ICON_LIGHT_RAIN",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_RAIN_STORM",
-                    "name": "ICON_RAIN_STORM",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_SANDSTORM",
-                    "name": "ICON_SANDSTORM",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_SHOWER_DAY",
-                    "name": "ICON_SHOWER_DAY",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_SHOWER_NIGHT",
-                    "name": "ICON_SHOWER_NIGHT",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_SLEET",
-                    "name": "ICON_SLEET",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_SNOW",
-                    "name": "ICON_SNOW",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_LIGHT_SNOW",
-                    "name": "ICON_LIGHT_SNOW",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_SNOW_SHOWER_DAY",
-                    "name": "ICON_SNOW_SHOWER_DAY",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_SNOW_SHOWER_NIGHT",
-                    "name": "ICON_SNOW_SHOWER_NIGHT",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/ICON_CLEAR_NIGHT",
-                    "name": "ICON_CLEAR_NIGHT",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                },
-                {
-                    "file": "images/logo25.png",
-                    "menuIcon": true,
-                    "name": "LOGO",
-                    "targetPlatforms": null,
-                    "type": "bitmap"
-                }
-            ]
+        {
+          "file": "images/ICON_HEAVY_SNOW",
+          "name": "ICON_HEAVY_SNOW",
+          "targetPlatforms": null,
+          "type": "bitmap"
         },
-        "sdkVersion": "3",
-        "targetPlatforms": [
-            "emery"
-        ],
-        "uuid": "7f3f1294-e524-4050-bc8b-60248df17363",
-        "watchapp": {
-            "watchface": true
+        {
+          "file": "images/ICON_CLOUDY",
+          "name": "ICON_CLOUDY",
+          "targetPlatforms": null,
+          "type": "bitmap"
         },
-        "manifestVersion": 2,
-        "usesPermissions": [
-            {
-                "name": "Location",
-                "reason": "Read sunrise and sunset for Auto appearance",
-                "required": false
-            },
-            {
-                "name": "InvokeAction",
-                "plugin": "2c5edc42-b096-4f76-b284-1f27907e6502"
-            },
-            {
-                "name": "UniversalTtsSpeak",
-                "plugin": "2c5edc42-b096-4f76-b284-1f27907e6502"
-            },
-            "Calendar"
-        ]
+        {
+          "file": "images/ICON_THUNDER_SHOWER",
+          "name": "ICON_THUNDER_SHOWER",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_CLEAR_DAY",
+          "name": "ICON_CLEAR_DAY",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_HEAVY_RAIN",
+          "name": "ICON_HEAVY_RAIN",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_CLOUDY_SUN",
+          "name": "ICON_CLOUDY_SUN",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_CLOUDY_NIGHT",
+          "name": "ICON_CLOUDY_NIGHT",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_DUST",
+          "name": "ICON_DUST",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_FOG",
+          "name": "ICON_FOG",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_HAZE",
+          "name": "ICON_HAZE",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_RAIN",
+          "name": "ICON_RAIN",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_LIGHT_RAIN",
+          "name": "ICON_LIGHT_RAIN",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_RAIN_STORM",
+          "name": "ICON_RAIN_STORM",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_SANDSTORM",
+          "name": "ICON_SANDSTORM",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_SHOWER_DAY",
+          "name": "ICON_SHOWER_DAY",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_SHOWER_NIGHT",
+          "name": "ICON_SHOWER_NIGHT",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_SLEET",
+          "name": "ICON_SLEET",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_SNOW",
+          "name": "ICON_SNOW",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_LIGHT_SNOW",
+          "name": "ICON_LIGHT_SNOW",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_SNOW_SHOWER_DAY",
+          "name": "ICON_SNOW_SHOWER_DAY",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_SNOW_SHOWER_NIGHT",
+          "name": "ICON_SNOW_SHOWER_NIGHT",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/ICON_CLEAR_NIGHT",
+          "name": "ICON_CLEAR_NIGHT",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        },
+        {
+          "file": "images/logo25.png",
+          "menuIcon": true,
+          "name": "LOGO",
+          "targetPlatforms": null,
+          "type": "bitmap"
+        }
+      ]
     },
-    "version": "2.6.0"
+    "sdkVersion": "3",
+    "targetPlatforms": [
+      "emery"
+    ],
+    "uuid": "7f3f1294-e524-4050-bc8b-60248df17363",
+    "watchapp": {
+      "watchface": true
+    },
+    "manifestVersion": 2,
+    "usesPermissions": [
+      {
+        "name": "Location",
+        "reason": "Read sunrise and sunset for Auto appearance",
+        "required": false
+      },
+      {
+        "name": "InvokeAction",
+        "plugin": "2c5edc42-b096-4f76-b284-1f27907e6502"
+      },
+      {
+        "name": "UniversalTtsSpeak",
+        "plugin": "2c5edc42-b096-4f76-b284-1f27907e6502"
+      },
+      "Calendar"
+    ]
+  },
+  "version": "2.6.0"
 }
