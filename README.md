@@ -2,6 +2,8 @@
 
 ## Modular complications (experimental feature branch)
 
+**Moon Image complication:** Under Sun & Moon, choose **Moon image + illumination** in any corner. The watch draws the correct waxing/right-lit or waning/left-lit shape, using its clock and a lunar-cycle estimate. Moon Phase and Moon Illumination text options remain available, and the graphic needs no additional phone or provider subscription. Event and weather slide panels now stop 8 pixels lower for more clock clearance.
+
 **Weather transport:** The active watchface subscribes to Weather+ on the phone.
 Only the fields used by currently selected weather/astronomy complications are
 transmitted, and only when their displayed values change. The phone tracks
