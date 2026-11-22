@@ -1,5 +1,21 @@
 # KinetiCast — Health and Weather
 
+## Modular complications (experimental feature branch)
+
+This branch adds opt-in **Custom (four corners)** and Weather, Fitness and Agenda presets. The default **Classic** mode retains the original icon, combined temperature gauge, dual health rings with distance, heart-rate history, full-width alternate panels, date and time. Existing saved preferences are preserved.
+
+- Each corner offers Category and Reading selectors for Weather, Air Quality & Marine, Health & Fitness, Calendar, Date & Time, Sun & Moon, Battery & System, Plugin Data and Blank.
+- **Original dual health rings + distance** remains a selectable complication, along with ring-only, numerical steps, distance, active minutes, BPM-only and BPM-with-graph variants.
+- The battery strip has Off, Slim, Enhanced, and Bar + Percentage modes; battery % and estimated days are corner options. The discharge estimate appears only after sufficient unplugged history.
+- Weather+ offers rain probability and an approximate hour-level onset, UV, humidity, wind, AQI, warnings and marine metrics as available from the provider. Missing values do not display as zero.
+- Plugin Data discovers read-only scalar plugin fields and Pebble preferred complications 1–5. Home Assistant Bridge has optional HomeRead permission; no control permission is requested.
+- The wrist flick and approaching-event takeover still temporarily display original full-width panels.
+
+### Feature-branch limitations
+
+Emery / Pebble Time 2 only. Trends currently display numerical summaries rather than full sparklines; alternate timezone is reserved but not implemented; generic plugin discovery cannot override another plugin's permissions. VitalGauge Energy Reserve/Readiness remain watch-local to VitalGauge and are **not available in KinetiCast** until a shared data bridge exists. Source fields can be unavailable depending on provider/location. The settings page needs Save Settings rather than offering live on-watch preview. Physical-device visual and power testing is needed before a release.
+
+
 Pebble Time 2 watchface combining clock, weather and health information.
 
 **Current source version:** 2.6.0 (see `package.json`). **Target:** Emery / Pebble Time 2.
