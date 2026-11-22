@@ -57,16 +57,15 @@ var extraByMetric={
   73:['sunrise','sunset','daily_sunrise','daily_sunset']
 };
 function metricIds(settings,catalog){
-  var mode=Number(settings.CORNER_MODE||0);
-  if(mode===0)return [1,2,14,19]; // Classic, including full forecast view.
-  if(mode===2)return [1,2,14,16];
-  if(mode===3)return [1]; // Fitness preset still has an icon.
-  if(mode===4)return [1,2]; // Agenda preset includes combined weather.
-  return catalog.slots.map(function(slot){return catalog.chosenMetric(settings,slot);});
+  var ids=catalog.activeMetrics(settings);
+  // Center three-day forecast and wrist-flick forecast are both real weather
+  // consumers, even when no corner displays weather.
+  if(catalog.centerView(settings)===3 || Number(settings.SHAKE_ACTION||0)===0)
+    ids.push(19);
+  return ids;
 }
 function unique(list){return list.filter(function(v,i){return list.indexOf(v)===i;});}
 function watchedKeys(settings,catalog){
-  if(Number(settings.CORNER_MODE||0)===0)return LEGACY.slice();
   var list=[];
   metricIds(settings,catalog).forEach(function(id){
     list=list.concat(perMetric[id]||[]);
@@ -76,10 +75,13 @@ function watchedKeys(settings,catalog){
   return unique(list);
 }
 function properties(settings,catalog){
-  var list=BASE.slice();
+  var list=['utc_offset','updated_at'];
   metricIds(settings,catalog).forEach(function(id){
     list=list.concat(extraByMetric[id]||[]);
   });
+  // The Weather+ payload reader also validates the temperature plus the daily
+  // range, so retain its baseline fields while any weather source is needed.
+  if(requiresWeather(settings,catalog))list=list.concat(BASE);
   return unique(list);
 }
 function requiresWeather(settings,catalog) {
