@@ -30,7 +30,7 @@ var groups = {
   astronomy: [
     [70,'Sunrise'], [71,'Sunset'], [72,'Daylight remaining'],
     [73,'Daylight progress'], [74,'Moon phase'], [75,'Moon illumination'],
-    [76,'Moon image + illumination']
+    [77,'Moon image'], [76,'Moon image + illumination']
   ],
   system: [
     [80,'Watch battery %'], [81,'Watch battery gauge'], [82,'Estimated battery days'],
