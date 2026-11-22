@@ -234,7 +234,7 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
   GRect b=layer_get_bounds(layer);
   GColor fg=is_dark_theme()?GColorWhite:GColorBlack;
   graphics_context_set_text_color(ctx,fg);
-  char value[50]="--",extra[50]="";
+  char value[50]="--";
   int n=KC_MISSING;
   time_t now=time(NULL);
   struct tm *tm_now=localtime(&now);
