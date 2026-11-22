@@ -601,6 +601,7 @@ static void execute_panel_transition(bool alternate_view) {
   move_panel(s_health_container, target == 0 ? 126 : 222);
   move_panel(s_forecast_container, target == 1 ? 126 : 222);
   move_panel(s_calendar_container, target == 2 ? 126 : 222);
+  corner_apply_visibility();
 }
 // An active event takeover stays until its exact start time, irrespective of
 // the default panel or any temporary shake preview.
@@ -864,9 +865,19 @@ static void sleep_layer_update_proc(Layer *layer, GContext *ctx) {
 }
 
 static void battery_update_proc(Layer *layer, GContext *ctx) {
-  GRect b = layer_get_bounds(layer); 
-  graphics_context_set_fill_color(ctx, s_battery_level > 20 ? GColorKellyGreen : GColorRed);
-  graphics_fill_rect(ctx, GRect(0, 0, (s_battery_level * b.size.w) / 100, b.size.h), 0, GCornerNone);
+  GRect b=layer_get_bounds(layer);
+  if(s_battery_style==0)return;
+  graphics_context_set_fill_color(ctx,s_battery_level<=15?GColorRed:
+    s_battery_level<=30?GColorChromeYellow:GColorKellyGreen);
+  if(s_battery_style==3){
+    graphics_fill_rect(ctx,GRect(0,b.size.h-5,(s_battery_level*b.size.w)/100,5),0,GCornerNone);
+    graphics_context_set_text_color(ctx,is_dark_theme()?GColorWhite:GColorBlack);
+    char buf[12];snprintf(buf,sizeof(buf),"%d%%",s_battery_level);
+    graphics_draw_text(ctx,buf,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+      GRect(0,0,b.size.w,17),GTextOverflowModeTrailingEllipsis,GTextAlignmentCenter,NULL);
+  }else {
+    graphics_fill_rect(ctx,GRect(0,0,(s_battery_level*b.size.w)/100,b.size.h),0,GCornerNone);
+  }
 }
 
 // ==============================================================================
@@ -1023,6 +1034,7 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   request_calendar_handoff();
   update_calendar_countdown();
   request_weather(); // Throttled according to UPDATE_FREQ and the last valid update.
+  if(s_corner_mode)corner_redraw();
   // No periodic redraw: weather/theme updates invalidate the weather arc. 
 
   #if defined(PBL_HEALTH)
@@ -1081,6 +1093,7 @@ static void update_health() {
     layer_mark_dirty(s_goals_canvas);
   }
   #endif
+  if(s_corner_mode)corner_redraw();
 }
 static void health_handler(HealthEventType event, void *context) {
   (void)context;
@@ -1092,10 +1105,33 @@ static void health_handler(HealthEventType event, void *context) {
 }
 
 static void battery_callback(BatteryChargeState state) {
-  if (s_battery_level == state.charge_percent) return;
-  s_battery_level = state.charge_percent;
-  if (s_battery_layer) layer_mark_dirty(s_battery_layer);
-
+  int pct=state.charge_percent;
+  time_t now=time(NULL);
+  bool plugged=state.is_plugged||state.is_charging;
+  bool changed=s_battery_level!=pct||s_battery_charging!=plugged;
+  if(plugged||s_battery_last_sample_time<=0||pct>s_battery_last_sample_pct) {
+    s_battery_last_sample_pct=pct;
+    s_battery_last_sample_time=now;
+  } else if(pct<=s_battery_last_sample_pct-2 &&
+            now>s_battery_last_sample_time+3600) {
+    int elapsed=(int)(now-s_battery_last_sample_time);
+    int rate=(int)(((int64_t)(s_battery_last_sample_pct-pct)*8640000)/elapsed);
+    if(rate>=50&&rate<=5000) {
+      s_battery_rate_x100=s_battery_rate_x100>0?
+        (3*s_battery_rate_x100+rate)/4:rate;
+      persist_write_int(PERSIST_KEY_BATTERY_RATE,s_battery_rate_x100);
+    }
+    s_battery_last_sample_pct=pct;
+    s_battery_last_sample_time=now;
+  }
+  if(changed){
+    persist_write_int(PERSIST_KEY_BATTERY_SAMPLE_PCT,s_battery_last_sample_pct);
+    persist_write_int(PERSIST_KEY_BATTERY_SAMPLE_TIME,(int)s_battery_last_sample_time);
+  }
+  s_battery_level=pct;
+  s_battery_charging=plugged;
+  if(changed&&s_battery_layer)layer_mark_dirty(s_battery_layer);
+  if(changed&&s_corner_mode)corner_redraw();
 }
 
 // ==============================================================================
@@ -1260,7 +1296,17 @@ static void main_window_load(Window *window) {
 
   s_battery_layer = layer_create(GRect(0, 222, 200, 6)); 
   layer_set_update_proc(s_battery_layer, battery_update_proc); 
-  layer_add_child(w_layer, s_battery_layer); 
+  layer_add_child(w_layer, s_battery_layer);
+  const GRect corner_frames[4]={GRect(0,0,100,75),GRect(100,0,100,75),
+    GRect(0,126,100,96),GRect(100,126,100,96)};
+  for(int i=0;i<4;i++){
+    s_corner_layers[i]=layer_create(corner_frames[i]);
+    layer_set_update_proc(s_corner_layers[i],corner_draw_proc);
+    layer_add_child(w_layer,s_corner_layers[i]);
+  }
+  if(s_battery_style==2)layer_set_frame(s_battery_layer,GRect(0,218,200,10));
+  else if(s_battery_style==3)layer_set_frame(s_battery_layer,GRect(0,211,200,17));
+  corner_apply_visibility(); 
   
   s_shake_test_panel = layer_create(GRect(0, 126, 200, 96));
   layer_set_update_proc(s_shake_test_panel, shake_test_background_proc);
@@ -1332,7 +1378,8 @@ static void main_window_unload(Window *window) {
   bitmap_layer_destroy(s_f_icon2_layer); 
   bitmap_layer_destroy(s_f_icon3_layer); 
   
-  layer_destroy(s_health_container); 
+  layer_destroy(s_health_container);
+  for(int i=0;i<4;i++){if(s_corner_layers[i]){layer_destroy(s_corner_layers[i]);s_corner_layers[i]=NULL;}} 
   layer_destroy(s_forecast_container);
   text_layer_destroy(s_calendar_label_layer);
   text_layer_destroy(s_calendar_title_layer);
