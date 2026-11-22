@@ -1304,6 +1304,10 @@ static void main_window_load(Window *window) {
     layer_set_update_proc(s_corner_layers[i],corner_draw_proc);
     layer_add_child(w_layer,s_corner_layers[i]);
   }
+  // The bar is drawn last, above corner content, and each corner is constrained
+  // to the space above it by corner_apply_visibility().
+  layer_remove_from_parent(s_battery_layer);
+  layer_add_child(w_layer,s_battery_layer);
   if(s_battery_style==2)layer_set_frame(s_battery_layer,GRect(0,218,200,10));
   else if(s_battery_style==3)layer_set_frame(s_battery_layer,GRect(0,211,200,17));
   corner_apply_visibility();
