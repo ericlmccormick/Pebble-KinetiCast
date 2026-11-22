@@ -1,5 +1,5 @@
 // Regression for temporary panels: they must slide up over the bottom only,
-// leave clock and top weather intact, and use actually small 24px icons.
+// leave clock and top weather intact, and use transparent 32px center icons.
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const main=fs.readFileSync('src/c/main.c','utf8');
@@ -27,16 +27,20 @@ assert.doesNotMatch(renderer,/if\(s_view_is_swapped\)return s_panel_override/,
  'Temporary panel must not be treated as a change to center selection');
 assert.match(renderer,/static void slide_panel_background\(/,
  'Overlay needs an opaque background above bottom complications');
-assert.match(renderer,/draw_compact_forecast_icon\(ctx,icons\[i\],x\+21,18\)/);
+assert.match(renderer,/draw_compact_forecast_icon\(ctx,icons\[i\],x\+17,18\)/);
 assert.match(main,/layer_set_hidden\(bitmap_layer_get_layer\(s_f_icon1_layer\),false\)/,
   'The flick panel reuses original 64px image layers');
 assert.doesNotMatch(renderer,/graphics_draw_bitmap_in_rect\(ctx,icons\[i\]/,
  'Large bitmaps get cropped, NOT rescaled by Pebble graphics_draw_bitmap_in_rect');
-assert.match(renderer,/gbitmap_create_as_sub_bitmap/,'24px center icons use pre-scaled artwork');
+assert.match(renderer,/gbitmap_create_as_sub_bitmap/,'32px center icons use pre-scaled artwork');
+assert.match(renderer,/s_compact_atlas,GRect\(\(i%3\)\*32,\(i\/3\)\*32,32,32\)/);
+assert.match(renderer,/graphics_context_set_compositing_mode\(ctx,GCompOpSet\)/,
+  'Transparent weather PNGs must use alpha-preserving compositing');
+assert.match(renderer,/graphics_draw_bitmap_in_rect\(ctx,s_compact_icons\[i\],GRect\(x,y,32,32\)\)/);
 assert.match(main,/compact_icons_init\(\)/,'Atlas is loaded once');
 assert.match(main,/compact_icons_deinit\(\)/,'Atlas is freed on unload');
 assert.ok(manifest.pebble.resources.media.some(item=>item.name==='COMPACT_WEATHER_ATLAS'));
 assert.match(renderer,/layer_set_hidden\(s_forecast_container,false\)/,
  'Do not hide overlay until slide-down is complete');
 assert.match(renderer,/layer_set_hidden\(s_weather_arc_layer,!original_right\)/);
-console.log('Wrist flick uses original 64px icons in bottom slide; center uses real 24px artwork');
+console.log('Wrist flick keeps original 64px icons; center uses alpha-composited 32px icons');
