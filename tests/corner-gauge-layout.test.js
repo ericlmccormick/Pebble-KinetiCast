@@ -18,7 +18,7 @@ assert.match(draw,/draw_combined_temperature\(ctx,layer_get_bounds\(layer\)\)/,
  'Legacy top-right gauge must call the same function as other corners');
 assert.match(draw,/GRect\(bounds.origin.x\+15,bounds.origin.y\+35,35,22\)/);
 assert.match(draw,/GRect\(bounds.origin.x\+bounds.size.w-50,bounds.origin.y\+35,35,22\)/);
-assert.match(draw,/grect_inset\(bounds,GEdgeInsets\(14, 14, 28, 14\)\)/);
+assert.match(draw,/grect_inset\(bounds,\s*GEdgeInsets\(14, 14, 28, 14\)\)/);
 assert.match(draw,/GColorKellyGreen/);
 assert.match(draw,/GColorYellow/);
 assert.match(draw,/GColorOrange/);
