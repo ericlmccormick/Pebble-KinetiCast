@@ -746,7 +746,8 @@ static void bluetooth_callback(bool connected) {
     request_weather();
   }
   if (!connected && !quiet_time_is_active()) vibes_double_pulse(); 
-  layer_mark_dirty(s_weather_arc_layer); // Keep the last valid icon, even when offline. 
+  layer_mark_dirty(s_weather_arc_layer); // Keep the last valid icon, even when offline.
+  corner_redraw(); // Also update copied temperature/connection gauges in other corners.
 }
 
 // ==============================================================================
@@ -943,8 +944,9 @@ static void update_theme_colors() {
   bitmap_layer_set_compositing_mode(s_f_icon2_layer, GCompOpSet); 
   bitmap_layer_set_compositing_mode(s_f_icon3_layer, GCompOpSet); 
   
-  layer_mark_dirty(s_weather_arc_layer); 
-  layer_mark_dirty(s_goals_canvas); 
+  layer_mark_dirty(s_weather_arc_layer);
+  layer_mark_dirty(s_goals_canvas);
+  corner_redraw(); // Theme changes must repaint movable weather/health graphics.
 }
 
 static uint32_t get_resource_by_code(char *code) {
@@ -1463,18 +1465,26 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
 
   while(t) { 
     if(t->key == MESSAGE_KEY_TEMP_CURRENT) { s_cur = get_int(t); s_has_weather = true; s_last_weather_success = time(NULL); weather_changed = true; }
-    else if(t->key == MESSAGE_KEY_TEMP_HIGH) s_hi = get_int(t);
-    else if(t->key == MESSAGE_KEY_TEMP_LOW) s_lo = get_int(t);
-    else if(t->key == MESSAGE_KEY_CONDITIONS && t->type == TUPLE_CSTRING) { if(strcmp(s_icon_code, t->value->cstring)) set_weather_icon(t->value->cstring); }
+    else if(t->key == MESSAGE_KEY_TEMP_HIGH) { s_hi=get_int(t);weather_changed=true; }
+    else if(t->key == MESSAGE_KEY_TEMP_LOW) { s_lo=get_int(t);weather_changed=true; }
+    else if(t->key == MESSAGE_KEY_CONDITIONS && t->type == TUPLE_CSTRING) {
+      if(strcmp(s_icon_code,t->value->cstring)){
+        set_weather_icon(t->value->cstring);
+        weather_changed=true;
+      }
+    }
     else if(t->key == MESSAGE_KEY_UPDATE_FREQ) s_update_freq = get_int(t);
     else if(t->key == MESSAGE_KEY_UNITS || t->key == MESSAGE_KEY_DISTANCE_UNIT) { s_use_metric = (get_int(t) == 1); update_health(); }
     else if(t->key == MESSAGE_KEY_TEMP_UNIT) {
       int unit = get_int(t);
       s_temp_unit = (unit >= 0 && unit <= 3) ? unit : 0;
+      weather_changed=true;
     }
-    else if(t->key == MESSAGE_KEY_UV_INDEX) s_uv = get_int(t);
+    else if(t->key == MESSAGE_KEY_UV_INDEX) {s_uv=get_int(t);weather_changed=true;}
     else if(t->key == MESSAGE_KEY_IS_NIGHT) {
-      if (s_is_night != (get_int(t) == 1)) { s_is_night = (get_int(t) == 1); theme_changed = true; }
+      if (s_is_night != (get_int(t) == 1)) {
+        s_is_night=(get_int(t)==1);theme_changed=true;weather_changed=true;
+      }
     }
     else if(t->key == MESSAGE_KEY_SHOW_SLEEP) s_show_sleep = (get_int(t) == 1); 
     else if(t->key == MESSAGE_KEY_THEME_MODE) {
@@ -1638,7 +1648,10 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
   }
   save_weather_data(); 
   if (forecast_icons_changed) generate_forecast_bitmaps();
-  if (weather_changed) layer_mark_dirty(s_weather_arc_layer);
+  if (weather_changed) {
+    layer_mark_dirty(s_weather_arc_layer);
+    corner_redraw(); // Refresh every displayed copy, including high/low-only pushes.
+  }
   
   if (theme_changed) update_theme_colors(); 
   if (layout_changed) {
