@@ -168,7 +168,7 @@ cornerCatalog.slots.forEach(function(slot){
         cornerCatalog.defaults[slot].metric:cornerCatalog.groups[group][0][0]),
       options:cornerCatalog.metricOptions(group)});
   });
-  cornerItems.push({type:'select',messageKey:base+'PLUGIN',
+  cornerItems.push({type:'select',messageKey:base+'PLUGIN_SPEC',
     label:'Installed plugin reading',defaultValue:'',options:[
       {label:'Choose a published plugin field',value:''}]});
   cornerItems.push({type:'slider',messageKey:base+'INDEX',
