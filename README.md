@@ -14,14 +14,16 @@ not continuous watch polling. Rain-arrival countdowns use a timestamp on the
 watch rather than minute-by-minute Bluetooth pushes.
 
 
-This branch adds opt-in **Custom (four corners)** and Weather, Fitness and Agenda presets. The default **Classic** mode retains the original icon, combined temperature gauge, dual health rings with distance, heart-rate history, full-width alternate panels, date and time. Existing saved preferences are preserved.
+This branch offers one configurable layout: four corners plus a selectable center. The defaults reproduce the original watchface: top-left weather icon, top-right combined weather display, bottom-left **original 72×72 health rings and distance label**, bottom-right original heart icon/BPM/graph, and the date and clock at their original pixel positions. Previous preview presets are retired; the test-build UUID is separate from production.
 
-- Each corner offers Category and Reading selectors for Weather, Air Quality & Marine, Health & Fitness, Calendar, Date & Time, Sun & Moon, Battery & System, Plugin Data and Blank.
+- Each corner offers Category and Reading selectors for Weather, Air Quality & Marine, Health & Fitness, Calendar, Date & Time (including **Time**), Sun & Moon, Battery & System, Plugin Data and Blank. The center can be **Time + Date**, **Time only**, **Next Event**, or **3-Day Weather**.
 - **Original dual health rings + distance** remains a selectable complication, along with ring-only, numerical steps, distance, active minutes, BPM-only and BPM-with-graph variants.
 - The battery strip has Off, Slim, Enhanced, and Bar + Percentage modes; battery % and estimated days are corner options. The discharge estimate appears only after sufficient unplugged history.
 - Weather+ offers rain probability and an approximate hour-level onset, UV, humidity, wind, AQI, warnings and marine metrics as available from the provider. Missing values do not display as zero.
 - Plugin Data discovers read-only scalar plugin fields and Pebble preferred complications 1–5. Home Assistant Bridge has optional HomeRead permission; no control permission is requested.
-- The wrist flick and approaching-event takeover still temporarily display original full-width panels.
+- Wrist flicks temporarily preview a three-day forecast or next event **in the center**. The automatic upcoming-event takeover also replaces only the center, leaving corners unchanged.
+- There is no separate weather update toggle or bottom panel section. Weather is subscribed and pushed whenever a selected corner, the center, or a weather wrist preview needs it. The Weather section appears only when relevant.
+- Health/Sleep and Calendar sections are conditional on selected complications and active feature settings. Health history, distance units, live updates and morning sleep options remain available where applicable.
 
 ### Feature-branch limitations
 
