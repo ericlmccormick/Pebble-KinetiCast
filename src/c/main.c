@@ -753,8 +753,7 @@ static void bluetooth_callback(bool connected) {
 // SECTION: CUSTOM DRAWING PROCEDURES
 // ==============================================================================
 
-static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
-  GRect bounds = layer_get_bounds(layer); 
+static void draw_combined_temperature(GContext *ctx,GRect bounds) {
   graphics_context_set_antialiased(ctx, true); 
   graphics_context_set_text_color(ctx, is_dark_theme() ? GColorWhite : GColorBlack); 
   
@@ -762,12 +761,12 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
   else snprintf(s_lo_buf, sizeof(s_lo_buf), "--"); 
   if (s_has_weather) snprintf(s_hi_buf, sizeof(s_hi_buf), "%d", s_hi);
   else snprintf(s_hi_buf, sizeof(s_hi_buf), "--"); 
-  graphics_draw_text(ctx, s_lo_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(15, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
-  graphics_draw_text(ctx, s_hi_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 50, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
+  graphics_draw_text(ctx, s_lo_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.origin.x+15,bounds.origin.y+35,35,22), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
+  graphics_draw_text(ctx, s_hi_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.origin.x+bounds.size.w-50,bounds.origin.y+35,35,22), GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
   
   if (s_has_weather) snprintf(s_cur_buf, sizeof(s_cur_buf), "%d", s_cur);
   else snprintf(s_cur_buf, sizeof(s_cur_buf), "--"); 
-  graphics_draw_text(ctx, s_cur_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_28_BOLD), GRect(0, 15, bounds.size.w, 35), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL); 
+  graphics_draw_text(ctx, s_cur_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_28_BOLD), GRect(bounds.origin.x,bounds.origin.y+15,bounds.size.w,35), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL); 
   
   GRect arc_bounds = grect_inset(bounds, GEdgeInsets(14, 14, 28, 14)); 
   graphics_context_set_stroke_width(ctx, 4); 
@@ -803,8 +802,14 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
   }
   time_t now = time(NULL);
   if (!s_connected || !s_has_weather || (s_last_weather_success > 0 && now - s_last_weather_success > 12 * 60 * 60)) {
-    graphics_draw_text(ctx, "!", fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 16, 0, 16, 22), GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
+    graphics_draw_text(ctx, "!", fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.origin.x+bounds.size.w-16,bounds.origin.y,16,22), GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
   }
+}
+
+static void weather_arc_update_proc(Layer *layer,GContext *ctx) {
+  // The built-in top-right gauge and movable corner gauges use precisely
+  // the same low/current/high, UV dot and warning geometry.
+  draw_combined_temperature(ctx,layer_get_bounds(layer));
 }
 
 static void goals_update_proc(Layer *layer, GContext *ctx) {
