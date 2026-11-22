@@ -135,19 +135,28 @@ static void corner_rings(GContext *ctx,GRect b,bool show_distance) {
   }
 }
 static void corner_heart_graph(GContext *ctx,GRect b) {
+  // Honor the 20/30/60 minute health setting, including when this complication
+  // is moved to a corner other than the original bottom-right position.
   GRect r=GRect(10,b.size.h-31,b.size.w-20,24);
+  int visible=s_hr_window;
+  if(visible!=20&&visible!=30&&visible!=60)visible=20;
+  int first=HR_HISTORY_SIZE-visible;
   graphics_context_set_stroke_width(ctx,2);
-  for(int i=41;i<59;i++){
+  for(int i=first;i<HR_HISTORY_SIZE-1;i++){
     if(s_hr_history[i]<=0||s_hr_history[i+1]<=0)continue;
     int y1=r.origin.y+r.size.h-1-(s_hr_history[i]-55)/3;
     int y2=r.origin.y+r.size.h-1-(s_hr_history[i+1]-55)/3;
-  if(y1<r.origin.y)y1=r.origin.y;
-  if(y1>r.origin.y+r.size.h)y1=r.origin.y+r.size.h;
-  if(y2<r.origin.y)y2=r.origin.y;
-  if(y2>r.origin.y+r.size.h)y2=r.origin.y+r.size.h;
-    graphics_context_set_stroke_color(ctx,GColorPictonBlue);
-    graphics_draw_line(ctx,GPoint(r.origin.x+((i-41)*r.size.w)/19,y1),
-      GPoint(r.origin.x+((i-40)*r.size.w)/19,y2));
+    if(y1<r.origin.y)y1=r.origin.y;
+    if(y1>r.origin.y+r.size.h)y1=r.origin.y+r.size.h;
+    if(y2<r.origin.y)y2=r.origin.y;
+    if(y2>r.origin.y+r.size.h)y2=r.origin.y+r.size.h;
+    int avg=(s_hr_history[i]+s_hr_history[i+1])/2;
+    GColor col=avg<70?GColorPictonBlue:avg>120?GColorRed:
+      avg>95?GColorChromeYellow:GColorKellyGreen;
+    graphics_context_set_stroke_color(ctx,col);
+    int x1=r.origin.x+((i-first)*(r.size.w-1))/(visible-1);
+    int x2=r.origin.x+((i+1-first)*(r.size.w-1))/(visible-1);
+    graphics_draw_line(ctx,GPoint(x1,y1),GPoint(x2,y2));
   }
 }
 static void corner_draw_proc(Layer *layer,GContext *ctx) {
