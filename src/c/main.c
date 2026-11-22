@@ -186,10 +186,8 @@ static void request_weather() {
   if (!s_weather_updates_enabled) return;
   time_t now = time(NULL);
   if (!s_connected || (s_last_weather_request && now - s_last_weather_request < 60)) return;
-  int interval = s_update_freq < 10 ? 10 : (s_update_freq > 120 ? 120 : s_update_freq);
-  // Reduce radio use automatically at critically low battery.
-  if (s_battery_level <= 15) interval *= 2;
-  if (s_has_weather && now - s_last_weather_success < interval * 60) return;
+  // Request a one-time snapshot on launch/reconnect only. Weather+ pushes
+  // subsequently from the phone when a displayed value actually changes.
   
   DictionaryIterator *iter; 
   if (app_message_outbox_begin(&iter) == APP_MSG_OK) { 
@@ -783,7 +781,7 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
     graphics_fill_circle(ctx, dot, 5);
   }
   time_t now = time(NULL);
-  if (!s_connected || !s_has_weather || (s_last_weather_success > 0 && now - s_last_weather_success > (s_update_freq * 120))) {
+  if (!s_connected || !s_has_weather || (s_last_weather_success > 0 && now - s_last_weather_success > 12 * 60 * 60)) {
     graphics_draw_text(ctx, "!", fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 16, 0, 16, 22), GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
   }
 }
@@ -1033,7 +1031,7 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   update_persistent_calendar();
   request_calendar_handoff();
   update_calendar_countdown();
-  request_weather(); // Throttled according to UPDATE_FREQ and the last valid update.
+  // Weather is pushed by the phone; no weather request in the minute tick.
   if(s_corner_mode)corner_redraw();
   // No periodic redraw: weather/theme updates invalidate the weather arc. 
 
