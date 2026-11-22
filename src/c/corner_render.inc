@@ -4,6 +4,27 @@
 static void corner_redraw(void) {
   for(int i=0;i<4;i++) if(s_corner_layers[i]) layer_mark_dirty(s_corner_layers[i]);
 }
+// Seconds refresh is opt-in, independently of minute ticks and HR history.
+static AppTimer *s_corner_seconds_timer=NULL;
+static bool corner_has_seconds(void) {
+  if(!s_corner_mode)return false;
+  for(int i=0;i<4;i++)if(s_corner_metric[i]==64)return true;
+  return false;
+}
+static void corner_seconds_callback(void *ctx) {
+  (void)ctx;s_corner_seconds_timer=NULL;
+  if(corner_has_seconds()) {
+    corner_redraw();
+    s_corner_seconds_timer=app_timer_register(1000,corner_seconds_callback,NULL);
+  }
+}
+static void corner_sync_seconds(void) {
+  if(!corner_has_seconds()) {
+    if(s_corner_seconds_timer){app_timer_cancel(s_corner_seconds_timer);s_corner_seconds_timer=NULL;}
+  } else if(!s_corner_seconds_timer) {
+    s_corner_seconds_timer=app_timer_register(1000,corner_seconds_callback,NULL);
+  }
+}
 static const char *corner_label(int metric) {
   switch(metric) {
     case 3:return "NOW"; case 4:return "HI / LO"; case 5:return "CONDITIONS";
@@ -219,11 +240,19 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
       if(min>=0)snprintf(value,sizeof(value),"%dh %dm",min/60,min%60);
       else snprintf(value,sizeof(value),"Night");}break;
     case 74:case 75: {
-      // Synodic cycle approximation, not an astronomical almanac.
-      int phase=(int)(((now/86400+4)%30+30)%30);
-      if(metric==75)snprintf(value,sizeof(value),"~%d%%",phase<=15?phase*100/15:(30-phase)*100/15);
-      else snprintf(value,sizeof(value),"%s",phase<2?"New":phase<7?"Wax cres":phase<10?"First q":
-        phase<14?"Wax gibb":phase<17?"Full":phase<22?"Wan gibb":phase<25?"Last q":"Wan cres");
+      // Approximate lunar age anchored to 2000-01-06 18:14 UTC new moon.
+      const int64_t cycle=2551443;
+      int64_t age=((int64_t)now-947182440LL)%cycle;
+      if(age<0)age+=cycle;
+      int phase=(int)((age*8+cycle/2)/cycle)%8;
+      int32_t angle=(int32_t)((age*TRIG_MAX_ANGLE)/cycle);
+      int illumination=(int)((50LL*(TRIG_MAX_RATIO-cos_lookup(angle)))/TRIG_MAX_RATIO);
+      if(metric==75)snprintf(value,sizeof(value),"~%d%%",illumination);
+      else {
+        const char *names[]={"New","Wax cres","First q","Wax gibb",
+          "Full","Wan gibb","Last q","Wan cres"};
+        snprintf(value,sizeof(value),"%s",names[phase]);
+      }
       break;
     }
     case 80:case 81:snprintf(value,sizeof(value),"%d%%",s_battery_level);break;
