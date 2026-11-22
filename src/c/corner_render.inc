@@ -154,6 +154,20 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
       GRect((b.size.w-size)/2,(b.size.h-size)/2,size,size));
     return;
   }
+  if(metric==19) {
+    graphics_context_set_text_color(ctx,fg);
+    corner_text(ctx,"3-DAY FORECAST",0,18,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+      GTextAlignmentCenter,b.size.w);
+    int hi[3]={s_d1_hi,s_d2_hi,s_d3_hi};
+    int lo[3]={s_d1_lo,s_d2_lo,s_d3_lo};
+    for(int i=0;i<3;i++){
+      char row[32];
+      snprintf(row,sizeof(row),"+%d  %d°/%d°",i+1,hi[i],lo[i]);
+      corner_text(ctx,row,18+i*19,20,fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
+        GTextAlignmentCenter,b.size.w);
+    }
+    return;
+  }
   if(metric==2) {
     if(s_has_weather) {
       corner_gauge(ctx,b,(s_hi>s_lo)?100*(s_cur-s_lo)/(s_hi-s_lo):50,GColorPictonBlue);
@@ -176,7 +190,20 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
   switch(metric) {
     case 3:if(s_has_weather)snprintf(value,sizeof(value),"%d°",s_cur);break;
     case 4:if(s_has_weather)snprintf(value,sizeof(value),"%d°/%d°",s_hi,s_lo);break;
-    case 5:snprintf(value,sizeof(value),"%s",s_icon_code);break;
+    case 5: {
+      const char *name="Unknown";
+      if(s_icon_code[0]=='0'&&s_icon_code[1]=='1')name="Clear";
+      else if(s_icon_code[0]=='0'&&s_icon_code[1]=='2')name="Partly cloud";
+      else if(s_icon_code[0]=='0'&&s_icon_code[1]=='3')name="Cloudy";
+      else if(s_icon_code[0]=='0'&&s_icon_code[1]=='4')name="Overcast";
+      else if(s_icon_code[0]=='0'&&s_icon_code[1]=='9')name="Showers";
+      else if(s_icon_code[0]=='1'&&s_icon_code[1]=='0')name="Rain";
+      else if(s_icon_code[0]=='1'&&s_icon_code[1]=='1')name="Storm";
+      else if(s_icon_code[0]=='1'&&s_icon_code[1]=='3')name="Snow";
+      else if(s_icon_code[0]=='5'&&s_icon_code[1]=='0')name="Fog";
+      snprintf(value,sizeof(value),"%s",name);
+      break;
+    }
     case 6:n=s_wx[0];break;
     case 7:n=s_wx[1];break;
     case 8:n=s_wx[2];break;
@@ -194,7 +221,11 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
       else snprintf(value,sizeof(value),"~%dh",n);}break;
     case 17:n=s_wx[20];break;
     case 18:n=s_wx[21];break;
-    case 19:if(s_d1_hi||s_d1_lo)snprintf(value,sizeof(value),"%d°/%d°",s_d1_hi,s_d1_lo);break;
+    case 19: {
+      // Compact fallback; full three-day values are drawn below as rows.
+      if(s_d1_hi||s_d1_lo)snprintf(value,sizeof(value),"%d°/%d°",s_d1_hi,s_d1_lo);
+      break;
+    }
     case 20:snprintf(value,sizeof(value),"%s",s_wx_alert[0]?s_wx_alert:"--");break;
     case 21:n=s_wx[10];break;
     case 22:n=s_wx[11];break;
