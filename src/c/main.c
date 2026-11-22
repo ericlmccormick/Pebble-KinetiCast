@@ -48,6 +48,7 @@
 #define PERSIST_KEY_BATTERY_SAMPLE_PCT 55
 #define PERSIST_KEY_BATTERY_SAMPLE_TIME 56
 #define PERSIST_KEY_BATTERY_RATE 57
+#define PERSIST_KEY_CENTER_VIEW 58
 #define PERSIST_KEY_WX_BASE 100
 #define PERSIST_KEY_WX_ALERT 122
 
@@ -127,7 +128,9 @@ static time_t s_last_weather_success = 0;
 static bool s_has_weather = false; 
 static int s_hr_history[HR_HISTORY_SIZE];
 static Layer *s_corner_layers[4]={NULL,NULL,NULL,NULL};
-static int s_corner_mode=0,s_battery_style=1;
+static int s_corner_mode=1,s_battery_style=1;
+static int s_center_view=0; // 0 original time/date, 1 time, 2 next event, 3 3-day forecast
+static Layer *s_center_layer=NULL;
 static int s_corner_metric[4]={1,2,30,38};
 static char s_corner_plugin_title[4][20]={{0}};
 static char s_corner_plugin_value[4][24]={{0}};
@@ -155,7 +158,8 @@ static void generate_forecast_bitmaps();
 static void show_shake_strength(int peak_mg);
 static void corner_redraw(void);
 static void corner_apply_visibility(void);
-static void corner_draw_proc(Layer*,GContext*); 
+static void corner_draw_proc(Layer*,GContext*);
+static void center_draw_proc(Layer*,GContext*); 
 
 // ==============================================================================
 // SECTION: UTILITY & HELPER FUNCTIONS
@@ -253,7 +257,8 @@ static void save_weather_data() {
   persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration);
   persist_write_int(PERSIST_KEY_TEMP_UNIT, s_temp_unit);
   persist_write_bool(PERSIST_KEY_DISTANCE_UNIT, s_use_metric);
-  persist_write_int(PERSIST_KEY_CORNER_MODE,s_corner_mode);
+  persist_write_int(PERSIST_KEY_CORNER_MODE,1);
+  persist_write_int(PERSIST_KEY_CENTER_VIEW,s_center_view);
   persist_write_int(PERSIST_KEY_BATTERY_STYLE,s_battery_style);
   for(int i=0;i<4;i++)persist_write_int(PERSIST_KEY_CORNER_BASE+i,s_corner_metric[i]);
   for(int i=0;i<22;i++)persist_write_int(PERSIST_KEY_WX_BASE+i,s_wx[i]);
@@ -275,8 +280,12 @@ static void load_weather_data() {
     persist_read_int(PERSIST_KEY_WX_BASE+i):(-32768);
   if(persist_exists(PERSIST_KEY_WX_ALERT))
     persist_read_string(PERSIST_KEY_WX_ALERT,s_wx_alert,sizeof(s_wx_alert));
-  if(persist_exists(PERSIST_KEY_CORNER_MODE))
-    {int mode=persist_read_int(PERSIST_KEY_CORNER_MODE);s_corner_mode=mode>=0&&mode<=4?mode:0;}
+  // The preview has one layout now; migrate any old preset to custom.
+  s_corner_mode=1;
+  if(persist_exists(PERSIST_KEY_CENTER_VIEW)){
+    int center=persist_read_int(PERSIST_KEY_CENTER_VIEW);
+    s_center_view=center>=0&&center<=3?center:0;
+  }
   if(persist_exists(PERSIST_KEY_BATTERY_STYLE)){
     int style=persist_read_int(PERSIST_KEY_BATTERY_STYLE);
     s_battery_style=style>=0&&style<=3?style:1;
@@ -309,7 +318,8 @@ static void load_weather_data() {
   }
   if (persist_exists(PERSIST_KEY_DISTANCE_UNIT)) s_use_metric = persist_read_bool(PERSIST_KEY_DISTANCE_UNIT);
   if (persist_exists(PERSIST_KEY_THEME_MODE)) s_theme_mode = persist_read_int(PERSIST_KEY_THEME_MODE);
-  if (persist_exists(PERSIST_KEY_DEFAULT_VIEW)) s_default_view = persist_read_int(PERSIST_KEY_DEFAULT_VIEW);
+  // Retain the legacy field for compatibility, but no longer select bottom panels.
+  s_default_view=0;
   if (persist_exists(PERSIST_KEY_SHAKE_ACTION)) {
     int action = persist_read_int(PERSIST_KEY_SHAKE_ACTION);
     s_shake_action = (action >= 0 && action <= 4) ? action : 0;
@@ -590,16 +600,11 @@ static int active_panel(void) {
   return s_panel_override >= 0 ? s_panel_override : s_default_view;
 }
 static void execute_panel_transition(bool alternate_view) {
-  // Default may be Health (0), Weather (1) or Next Event (2).
-  // The original alternate for Health/Weather is preserved.
-  s_view_is_swapped = alternate_view;
-  // Calendar takeover outranks short shake previews and restores the default at start.
-  int target = s_calendar_takeover_active ? 2 : (s_panel_override >= 0 ? s_panel_override :
-    (alternate_view ? (s_default_view == 0 ? 1 : 0) : s_default_view));
-  move_panel(s_health_container, target == 0 ? 126 : 222);
-  move_panel(s_forecast_container, target == 1 ? 126 : 222);
-  move_panel(s_calendar_container, target == 2 ? 126 : 222);
+  // Flicks preview the center only; corners and their original-size rings stay.
+  s_view_is_swapped=alternate_view;
+  if(s_health_container)layer_set_frame(s_health_container,GRect(0,126,200,96));
   corner_apply_visibility();
+  if(s_center_layer)layer_mark_dirty(s_center_layer);
 }
 // An active event takeover stays until its exact start time, irrespective of
 // the default panel or any temporary shake preview.
@@ -621,7 +626,7 @@ static void calendar_start_callback(void *context) {
 // This is one AppMessage at the event boundary, not an extra plugin sync.
 static void request_calendar_handoff(void) {
   if (!s_connected || s_calendar_status != 1 || !s_calendar_start) return;
-  if (s_default_view != 2 && s_shake_action != 3 &&
+  if (s_center_view != 2 && s_shake_action != 3 &&
       !s_persistent_calendar_enabled) return;
   time_t now = time(NULL);
   if ((int64_t)now - (int64_t)s_calendar_start < 15 * 60) return;
@@ -685,7 +690,7 @@ static void set_calendar_panel_title(const char *title) {
 
 static void update_calendar_countdown(void) {
   if (!s_calendar_countdown_layer) return;
-  if (!s_calendar_takeover_active && s_default_view != 2 &&
+  if (!s_calendar_takeover_active && s_center_view != 2 &&
       s_panel_override != 2) return;
   time_t now = time(NULL);
   if (s_calendar_status != 1 || !s_calendar_start ||
@@ -1166,14 +1171,14 @@ static void main_window_load(Window *window) {
   load_weather_data();
 
   // CHANGED: Base container Y starting point moved up to 126. Height expanded to 96px.
-  int initial_health_y = (s_default_view == 0) ? 126 : 222;
-  int initial_forecast_y = (s_default_view == 1) ? 126 : 222;
+  int initial_health_y=126;
+  int initial_forecast_y=222;
 
   s_health_container = layer_create(GRect(0, initial_health_y, 200, 96));
   s_forecast_container = layer_create(GRect(0, initial_forecast_y, 200, 96));
   layer_add_child(w_layer, s_health_container);
   layer_add_child(w_layer, s_forecast_container);
-  s_calendar_container = layer_create(GRect(0, s_default_view == 2 ? 126 : 222, 200, 96));
+  s_calendar_container=layer_create(GRect(0,222,200,96));
   layer_add_child(w_layer, s_calendar_container);
   s_calendar_label_layer = text_layer_create(GRect(10, 0, 180, 22));
   s_calendar_title_layer = text_layer_create(GRect(8, 20, 184, 49));
@@ -1302,6 +1307,10 @@ static void main_window_load(Window *window) {
     layer_set_update_proc(s_corner_layers[i],corner_draw_proc);
     layer_add_child(w_layer,s_corner_layers[i]);
   }
+  s_center_layer=layer_create(GRect(0,65,200,72));
+  layer_set_update_proc(s_center_layer,center_draw_proc);
+  layer_add_child(w_layer,s_center_layer);
+
   // The bar is drawn last, above corner content, and each corner is constrained
   // to the space above it by corner_apply_visibility().
   layer_remove_from_parent(s_battery_layer);
@@ -1382,6 +1391,7 @@ static void main_window_unload(Window *window) {
   bitmap_layer_destroy(s_f_icon3_layer); 
   
   if(s_corner_seconds_timer){app_timer_cancel(s_corner_seconds_timer);s_corner_seconds_timer=NULL;}
+  if(s_center_layer){layer_destroy(s_center_layer);s_center_layer=NULL;}
   layer_destroy(s_health_container);
   for(int i=0;i<4;i++){if(s_corner_layers[i]){layer_destroy(s_corner_layers[i]);s_corner_layers[i]=NULL;}} 
   layer_destroy(s_forecast_container);
@@ -1497,7 +1507,13 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     else if(t->key == MESSAGE_KEY_DAY3_ICON && t->type == TUPLE_CSTRING) { if(strcmp(s_d3_ic, t->value->cstring)) { snprintf(s_d3_ic, sizeof(s_d3_ic), "%s", t->value->cstring); forecast_icons_changed = true; }}
 
     else if(t->key == MESSAGE_KEY_CORNER_MODE){
-      {int mode=get_int(t);s_corner_mode=mode>=0&&mode<=4?mode:0;}layout_changed=true;
+      s_corner_mode=1; layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CENTER_VIEW){
+      int mode=get_int(t);
+      if(mode>=0&&mode<=3&&s_center_view!=mode) {
+        s_center_view=mode;layout_changed=true;
+      }
     }
     else if(t->key == MESSAGE_KEY_BATTERY_BAR_STYLE){
       int style=get_int(t);
