@@ -610,11 +610,15 @@ static int active_panel(void) {
   return s_panel_override >= 0 ? s_panel_override : s_default_view;
 }
 static void execute_panel_transition(bool alternate_view) {
-  // Flicks preview the center only; corners and their original-size rings stay.
+  // The seven-second flick is a full-width bottom overlay, not a center change.
+  // Restore both overlays offscreen on dismissal without mutating the four
+  // corners or the centered date/time or top-right weather gauge.
   s_view_is_swapped=alternate_view;
-  if(s_health_container)layer_set_frame(s_health_container,GRect(0,126,200,96));
-  corner_apply_visibility();
-  if(s_center_layer)layer_mark_dirty(s_center_layer);
+  bool show_calendar=s_calendar_takeover_active||
+    (alternate_view&&s_panel_override==2);
+  bool show_weather=alternate_view&&!show_calendar;
+  move_panel(s_forecast_container,show_weather?126:228);
+  move_panel(s_calendar_container,show_calendar?126:228);
 }
 // An active event takeover stays until its exact start time, irrespective of
 // the default panel or any temporary shake preview.
@@ -963,6 +967,8 @@ static void generate_forecast_bitmaps() {
   bitmap_layer_set_bitmap(s_f_icon1_layer, s_f_bmp1);
   bitmap_layer_set_bitmap(s_f_icon2_layer, s_f_bmp2);
   bitmap_layer_set_bitmap(s_f_icon3_layer, s_f_bmp3);
+  if(s_forecast_container)layer_mark_dirty(s_forecast_container);
+  if(s_center_layer)layer_mark_dirty(s_center_layer);
 }
 
 static void set_weather_icon(char *icon_code) {
@@ -1182,13 +1188,15 @@ static void main_window_load(Window *window) {
 
   // CHANGED: Base container Y starting point moved up to 126. Height expanded to 96px.
   int initial_health_y=126;
-  int initial_forecast_y=222;
+  int initial_forecast_y=228;
 
   s_health_container = layer_create(GRect(0, initial_health_y, 200, 96));
   s_forecast_container = layer_create(GRect(0, initial_forecast_y, 200, 96));
+  layer_set_update_proc(s_forecast_container,forecast_slide_draw_proc);
   layer_add_child(w_layer, s_health_container);
   layer_add_child(w_layer, s_forecast_container);
-  s_calendar_container=layer_create(GRect(0,222,200,96));
+  s_calendar_container=layer_create(GRect(0,228,200,96));
+  layer_set_update_proc(s_calendar_container,calendar_slide_draw_proc);
   layer_add_child(w_layer, s_calendar_container);
   s_calendar_label_layer = text_layer_create(GRect(10, 0, 180, 22));
   s_calendar_title_layer = text_layer_create(GRect(8, 20, 184, 49));
@@ -1254,7 +1262,12 @@ static void main_window_load(Window *window) {
   
   layer_add_child(s_forecast_container, bitmap_layer_get_layer(s_f_icon1_layer)); 
   layer_add_child(s_forecast_container, bitmap_layer_get_layer(s_f_icon2_layer)); 
-  layer_add_child(s_forecast_container, bitmap_layer_get_layer(s_f_icon3_layer)); 
+  layer_add_child(s_forecast_container, bitmap_layer_get_layer(s_f_icon3_layer));
+  // The 64px assets are used by the original full-screen display only.
+  // In the wrist panel, compact weather symbols are drawn in its parent.
+  layer_set_hidden(bitmap_layer_get_layer(s_f_icon1_layer),true);
+  layer_set_hidden(bitmap_layer_get_layer(s_f_icon2_layer),true);
+  layer_set_hidden(bitmap_layer_get_layer(s_f_icon3_layer),true); 
 
   text_layer_set_font(s_f_day1_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD)); 
   text_layer_set_font(s_f_day2_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD)); 
@@ -1319,6 +1332,20 @@ static void main_window_load(Window *window) {
   }
   s_center_layer=layer_create(GRect(0,65,200,72));
   layer_set_update_proc(s_center_layer,center_draw_proc);
+  layer_add_child(w_layer,s_center_layer);
+
+  // Overlay panels must be ABOVE the bottom corners/rings, while the date,
+  // clock, and chosen center remain ABOVE any 11px top-edge overlap.
+  // Forecast/calendar panels never occupy the top-right weather region.
+  layer_remove_from_parent(s_forecast_container);
+  layer_add_child(w_layer,s_forecast_container);
+  layer_remove_from_parent(s_calendar_container);
+  layer_add_child(w_layer,s_calendar_container);
+  layer_remove_from_parent(text_layer_get_layer(s_date_layer));
+  layer_add_child(w_layer,text_layer_get_layer(s_date_layer));
+  layer_remove_from_parent(text_layer_get_layer(s_time_layer));
+  layer_add_child(w_layer,text_layer_get_layer(s_time_layer));
+  layer_remove_from_parent(s_center_layer);
   layer_add_child(w_layer,s_center_layer);
 
   // The bar is drawn last, above corner content, and each corner is constrained
