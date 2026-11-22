@@ -156,8 +156,10 @@ static int moon_illumination(int phase) {
 static void corner_moon_image(GContext *ctx,GRect b,time_t now) {
   int phase=moon_cycle_thousandths(now);
   int illumination=moon_illumination(phase);
-  int radius=b.size.h>=78?22:16;
-  GPoint center=GPoint(b.size.w/2,b.size.h>=78?43:30);
+  // Upper corners are only 60px tall, so reserve 17px for the label and
+  // another 17px for the percentage without clipping either.
+  int radius=b.size.h>=78?22:13;
+  GPoint center=GPoint(b.size.w/2,b.size.h>=78?43:29);
   GColor shaded=is_dark_theme()?GColorDarkGray:GColorOxfordBlue;
   GColor lit=is_dark_theme()?GColorWhite:GColorLightGray;
   GColor rim=is_dark_theme()?GColorLightGray:GColorDarkGray;
