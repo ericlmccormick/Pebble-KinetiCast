@@ -1263,11 +1263,11 @@ static void main_window_load(Window *window) {
   layer_add_child(s_forecast_container, bitmap_layer_get_layer(s_f_icon1_layer)); 
   layer_add_child(s_forecast_container, bitmap_layer_get_layer(s_f_icon2_layer)); 
   layer_add_child(s_forecast_container, bitmap_layer_get_layer(s_f_icon3_layer));
-  // The 64px assets are used by the original full-screen display only.
-  // In the wrist panel, compact weather symbols are drawn in its parent.
-  layer_set_hidden(bitmap_layer_get_layer(s_f_icon1_layer),true);
-  layer_set_hidden(bitmap_layer_get_layer(s_f_icon2_layer),true);
-  layer_set_hidden(bitmap_layer_get_layer(s_f_icon3_layer),true); 
+  // The wrist-flick panel is the ORIGINAL 96px-high forecast panel:
+  // 64px artwork, exact original offsets and day/temperature text.
+  layer_set_hidden(bitmap_layer_get_layer(s_f_icon1_layer),false);
+  layer_set_hidden(bitmap_layer_get_layer(s_f_icon2_layer),false);
+  layer_set_hidden(bitmap_layer_get_layer(s_f_icon3_layer),false); 
 
   text_layer_set_font(s_f_day1_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD)); 
   text_layer_set_font(s_f_day2_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD)); 
@@ -1333,6 +1333,7 @@ static void main_window_load(Window *window) {
   s_center_layer=layer_create(GRect(0,65,200,72));
   layer_set_update_proc(s_center_layer,center_draw_proc);
   layer_add_child(w_layer,s_center_layer);
+  compact_icons_init();
 
   // Overlay panels must be ABOVE the bottom corners/rings, while the date,
   // clock, and chosen center remain ABOVE any 11px top-edge overlap.
@@ -1429,6 +1430,7 @@ static void main_window_unload(Window *window) {
   
   if(s_corner_seconds_timer){app_timer_cancel(s_corner_seconds_timer);s_corner_seconds_timer=NULL;}
   if(s_center_layer){layer_destroy(s_center_layer);s_center_layer=NULL;}
+  compact_icons_deinit();
   layer_destroy(s_health_container);
   for(int i=0;i<4;i++){if(s_corner_layers[i]){layer_destroy(s_corner_layers[i]);s_corner_layers[i]=NULL;}} 
   layer_destroy(s_forecast_container);
