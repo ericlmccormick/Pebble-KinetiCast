@@ -378,9 +378,88 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
   }
   corner_numeric(ctx,b,corner_label(metric),value,NULL);
 }
+// Native forecast assets are 64px. graphics_draw_bitmap_in_rect CLIPS
+// rather than scales them, so draw a compact 24px set in center/slide previews.
+static void draw_compact_forecast_icon(GContext *ctx,const char *code,int x,int y) {
+  int kind=(code&&code[0]>='0'&&code[0]<='9'&&code[1]>='0'&&code[1]<='9')?
+    (code[0]-'0')*10+code[1]-'0':3;
+  bool night=code&&code[2]=='n';
+  bool clear=kind==1,partly=kind==2,cloudy=kind==3||kind==4;
+  bool rain=kind==9||kind==10,storm=kind==11,snow=kind==13;
+  bool fog=kind==50;
+  bool draw_sun=clear||partly;
+  if(draw_sun) {
+    GColor sun=GColorChromeYellow;
+    graphics_context_set_stroke_color(ctx,sun);
+    graphics_context_set_stroke_width(ctx,1);
+    if(!night) {
+      for(int k=0;k<8;k++){
+        int dx=k==0||k==4?0:k==2?-8:k==6?8:k==1||k==3?-6:6;
+        int dy=k==2||k==6?0:k==0?-8:k==4?8:k<=2||k==7?-6:6;
+        graphics_draw_line(ctx,GPoint(x+12+dx*2/3,y+10+dy*2/3),
+          GPoint(x+12+dx,y+10+dy));
+      }
+    }
+    graphics_context_set_fill_color(ctx,sun);
+    graphics_fill_circle(ctx,GPoint(x+12,y+10),5);
+    if(night){
+      graphics_context_set_fill_color(ctx,is_dark_theme()?GColorBlack:GColorWhite);
+      graphics_fill_circle(ctx,GPoint(x+15,y+7),5);
+    }
+  }
+  if(!clear) {
+    GColor cloud=is_dark_theme()?GColorLightGray:GColorDarkGray;
+    graphics_context_set_fill_color(ctx,cloud);
+    graphics_fill_circle(ctx,GPoint(x+8,y+12),5);
+    graphics_fill_circle(ctx,GPoint(x+15,y+10),6);
+    graphics_fill_rect(ctx,GRect(x+4,y+12,17,6),0,GCornerNone);
+    if(rain) {
+      graphics_context_set_stroke_color(ctx,GColorPictonBlue);
+      graphics_context_set_stroke_width(ctx,2);
+      graphics_draw_line(ctx,GPoint(x+7,y+20),GPoint(x+5,y+23));
+      graphics_draw_line(ctx,GPoint(x+13,y+20),GPoint(x+11,y+23));
+      graphics_draw_line(ctx,GPoint(x+19,y+20),GPoint(x+17,y+23));
+    } else if(snow){
+      graphics_context_set_stroke_color(ctx,GColorPictonBlue);
+      graphics_context_set_stroke_width(ctx,2);
+      for(int i=0;i<3;i++) {
+        graphics_draw_pixel(ctx,GPoint(x+7+i*6,y+21));
+        graphics_draw_pixel(ctx,GPoint(x+7+i*6,y+23));
+      }
+    } else if(storm){
+      graphics_context_set_stroke_color(ctx,GColorChromeYellow);
+      graphics_context_set_stroke_width(ctx,2);
+      graphics_draw_line(ctx,GPoint(x+13,y+18),GPoint(x+10,y+22));
+      graphics_draw_line(ctx,GPoint(x+10,y+22),GPoint(x+15,y+22));
+      graphics_draw_line(ctx,GPoint(x+15,y+22),GPoint(x+13,y+24));
+    } else if(fog) {
+      graphics_context_set_stroke_color(ctx,GColorPictonBlue);
+      graphics_context_set_stroke_width(ctx,1);
+      graphics_draw_line(ctx,GPoint(x+4,y+20),GPoint(x+20,y+20));
+      graphics_draw_line(ctx,GPoint(x+6,y+23),GPoint(x+18,y+23));
+    }
+  }
+  (void)cloudy;
+}
+static void slide_panel_background(GContext *ctx,GRect b){
+  graphics_context_set_fill_color(ctx,is_dark_theme()?GColorBlack:GColorWhite);
+  graphics_fill_rect(ctx,b,0,GCornerNone);
+  graphics_context_set_stroke_color(ctx,is_dark_theme()?GColorLightGray:GColorDarkGray);
+  graphics_context_set_stroke_width(ctx,1);
+  graphics_draw_line(ctx,GPoint(0,0),GPoint(b.size.w-1,0));
+}
+static void forecast_slide_draw_proc(Layer *layer,GContext *ctx){
+  slide_panel_background(ctx,layer_get_bounds(layer));
+  draw_compact_forecast_icon(ctx,s_d1_ic,22,33);
+  draw_compact_forecast_icon(ctx,s_d2_ic,88,33);
+  draw_compact_forecast_icon(ctx,s_d3_ic,154,33);
+}
+static void calendar_slide_draw_proc(Layer *layer,GContext *ctx){
+  slide_panel_background(ctx,layer_get_bounds(layer));
+}
 static int active_center_view(void) {
-  if(s_calendar_takeover_active)return 2;
-  if(s_view_is_swapped)return s_panel_override==2?2:3;
+  // A flick and the persistent event use a separate bottom overlay.
+  // Never change the center clock, top-left icon, or top-right weather gauge.
   return s_center_view;
 }
 static void center_draw_proc(Layer *layer,GContext *ctx) {
@@ -403,7 +482,7 @@ static void center_draw_proc(Layer *layer,GContext *ctx) {
   time_t now=time(NULL);
   struct tm *local=localtime(&now);
   int wd=local?local->tm_wday:0;
-  GBitmap *icons[3]={s_f_bmp1,s_f_bmp2,s_f_bmp3};
+  const char *icons[3]={s_d1_ic,s_d2_ic,s_d3_ic};
   int hi[3]={s_d1_hi,s_d2_hi,s_d3_hi};
   int lo[3]={s_d1_lo,s_d2_lo,s_d3_lo};
   for(int i=0;i<3;i++){
@@ -411,8 +490,7 @@ static void center_draw_proc(Layer *layer,GContext *ctx) {
     graphics_draw_text(ctx,days[(wd+i+1)%7],
       fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
       GRect(x,0,66,18),GTextOverflowModeTrailingEllipsis,GTextAlignmentCenter,NULL);
-    if(icons[i])
-      graphics_draw_bitmap_in_rect(ctx,icons[i],GRect(x+15,17,36,36));
+    draw_compact_forecast_icon(ctx,icons[i],x+21,18);
     char temp[24];
     if(s_has_weather||s_last_weather_success>0||s_d1_hi||s_d1_lo){
       snprintf(temp,sizeof(temp),"%d°/%d°",hi[i],lo[i]);
@@ -465,8 +543,9 @@ static void corner_apply_visibility(void) {
   layer_set_hidden(text_layer_get_layer(s_hr_layer),!original_hr);
   layer_set_hidden(s_hr_graph_layer,!original_hr);
 
-  // The retired full-width bottom panel is never displayed.
-  layer_set_hidden(s_forecast_container,true);
-  layer_set_hidden(s_calendar_container,true);
+  // Slide overlays stay mounted, resting fully offscreen at y=228.
+  // Their visibility must NOT change during a slide-down animation.
+  layer_set_hidden(s_forecast_container,false);
+  layer_set_hidden(s_calendar_container,false);
   if(s_battery_layer)layer_set_hidden(s_battery_layer,s_battery_style==0);
 }
