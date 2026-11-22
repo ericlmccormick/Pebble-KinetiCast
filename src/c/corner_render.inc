@@ -419,10 +419,8 @@ static void slide_panel_background(GContext *ctx,GRect b){
   graphics_draw_line(ctx,GPoint(0,0),GPoint(b.size.w-1,0));
 }
 static void forecast_slide_draw_proc(Layer *layer,GContext *ctx){
+  // The original 64px forecast bitmap children render on top of this panel.
   slide_panel_background(ctx,layer_get_bounds(layer));
-  draw_compact_forecast_icon(ctx,s_d1_ic,22,33);
-  draw_compact_forecast_icon(ctx,s_d2_ic,88,33);
-  draw_compact_forecast_icon(ctx,s_d3_ic,154,33);
 }
 static void calendar_slide_draw_proc(Layer *layer,GContext *ctx){
   slide_panel_background(ctx,layer_get_bounds(layer));
