@@ -22,19 +22,9 @@ var clayConfig = [
       ]}
   ]},
   { "type": "section", "items": [
-    { "type": "heading", "defaultValue": "Watchface" },
-    { "type": "select", "messageKey": "DEFAULT_VIEW", "label": "Bottom Panel",
-      "defaultValue": "0", "options": [
-        { "label": "Health", "value": "0" },
-        { "label": "3-Day Weather", "value": "1" },
-        { "label": "Next Event", "value": "2" }
-      ] }
-  ] },
-  { "type": "section", "items": [
-    { "type": "heading", "defaultValue": "Weather" },
-    { "type": "toggle", "messageKey": "WEATHER_UPDATES_ENABLED",
-      "label": "Update Weather", "defaultValue": true,
-      "description": "Off keeps the last forecast." },
+    { "type": "heading", "id":"weather-section-heading", "defaultValue": "Weather" },
+    { "type":"text", "id":"weather-auto-note",
+      "defaultValue":"Weather turns on automatically when a corner, center, or wrist preview uses it. Only displayed changes are pushed from the phone." },
     { "type": "select", "messageKey": "WEATHER_PROVIDER", "label": "Source",
       "defaultValue": "weatherplus", "options": [
         { "label": "Weather+ (shared plugin)", "value": "weatherplus" },
@@ -66,7 +56,7 @@ var clayConfig = [
       "defaultValue": 30, "min": 10, "max": 120, "step": 5 }
   ] },
   { "type": "section", "items": [
-    { "type": "heading", "defaultValue": "Calendar" },
+    { "type": "heading", "id":"calendar-section-heading", "defaultValue": "Calendar" },
     { "type": "select", "messageKey": "CALENDAR_FILTER", "label": "Calendar",
       "defaultValue": "__all__", "options": [
         { "label": "All Calendars", "value": "__all__" }
@@ -90,7 +80,7 @@ var clayConfig = [
     { "type": "heading", "defaultValue": "Wrist Gestures" },
     { "type": "select", "messageKey": "SHAKE_ACTION", "label": "On Wrist Flick",
       "defaultValue": "0", "options": [
-        { "label": "Show Other Panel (7s)", "value": "0" },
+        { "label": "Preview 3-Day Weather (7s)", "value": "0" },
         { "label": "Show Next Event (7s)", "value": "3" },
         { "label": "Speak Time (TTS)", "value": "1" },
         { "label": "Test Shake Strength", "value": "4" },
@@ -115,7 +105,7 @@ var clayConfig = [
       "defaultValue": "Spoken time requires Universal TTS and a speaker." }
   ] },
   { "type": "section", "items": [
-    { "type": "heading", "defaultValue": "Health & Sleep" },
+    { "type": "heading", "id":"health-section-heading", "defaultValue": "Health & Sleep" },
     { "type": "select", "messageKey": "DISTANCE_UNIT", "label": "Walking Distance",
       "defaultValue": "mi", "options": [
         { "label": "Miles", "value": "mi" },
@@ -149,18 +139,18 @@ var clayConfig = [
 ];
 
 
-// Four independent corner selectors. Each category has a separate Clay select,
-// so a category change immediately exposes only relevant choices.
+// One configurable four-corner layout; the original arrangement is the default.
 var cornerItems = [
   {type:'heading',defaultValue:'Complications'},
-  {type:'select',messageKey:'CORNER_MODE',label:'Layout',
-   defaultValue:'0',options:[{label:'Classic (unchanged)',value:'0'},
-     {label:'Custom (four corners)',value:'1'},
-      {label:'Weather Focus',value:'2'},
-      {label:'Fitness Focus',value:'3'},
-      {label:'Agenda Focus',value:'4'}]},
-  {type:'text',id:'corner-info',defaultValue:
-   'All corners may display any type of reading. Classic retains the existing full-width bottom-panel behavior.'}
+  {type:'text',id:'layout-hint',defaultValue:
+   'Choose what each corner and the center display. Defaults match the original KinetiCast.'},
+  {type:'select',messageKey:'CENTER_VIEW',label:'Center',
+    defaultValue:'0',options:[
+      {label:'Time + date (original)',value:'0'},
+      {label:'Time only',value:'1'},
+      {label:'Next event',value:'2'},
+      {label:'3-day weather',value:'3'}
+    ]}
 ];
 cornerCatalog.slots.forEach(function(slot){
   var title={TL:'Top Left',TR:'Top Right',BL:'Bottom Left',BR:'Bottom Right'}[slot];
@@ -186,6 +176,8 @@ cornerItems.push({type:'select',messageKey:'BATTERY_BAR_STYLE',label:'Bottom Bat
     {label:'Enhanced',value:'2'}, {label:'Bar + Percentage',value:'3'}
   ]});
 clayConfig.splice(2,0,{type:'section',items:cornerItems});
+var sourceSections=clayConfig.slice(4,7);
+clayConfig.splice(4,3,sourceSections[2],sourceSections[0],sourceSections[1]);
 
 var clay = new Clay(clayConfig, customClay, { autoHandleEvents: false });
 var calendarSubscription = null;
@@ -264,7 +256,7 @@ function nextCalendarEvent() {
 }
 function calendarFeaturesEnabled(settings) {
   settings = settings || readSettings();
-  return Number(settings.DEFAULT_VIEW || 0) === 2 || cornerCatalog.usesCalendar(settings) ||
+  return cornerCatalog.usesCalendar(settings) ||
     Number(settings.SHAKE_ACTION || 0) === 3 ||
     settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false);
 }
@@ -1021,7 +1013,7 @@ function configureWeatherRecovery() {
   },5*60000);
 }
 function weatherUpdatesEnabled(settings) {
-  return settingEnabled((settings || readSettings()).WEATHER_UPDATES_ENABLED,true);
+  return weatherPush.requiresWeather(settings || readSettings(),cornerCatalog);
 }
 function chosenWeatherSource(settings) {
   return settings.WEATHER_PROVIDER || (settings.API_KEY ? 'openweathermap' : 'weatherplus');
@@ -1358,7 +1350,8 @@ Pebble.addEventListener('webviewclosed', function(e) {
     'SHAKE_LENGTH': settings.SHAKE_LENGTH === undefined ? 2 : parseInt(settings.SHAKE_LENGTH, 10),
     'HR_GRAPH_WINDOW': parseInt(settings.HR_GRAPH_WINDOW, 10) || 20,
     'SLEEP_BRIEF_SECONDS': parseInt(settings.SLEEP_BRIEF_SECONDS, 10) || 0,
-    'CORNER_MODE': Math.min(4,Math.max(0,Number(settings.CORNER_MODE||0))),
+    'CORNER_MODE': 1,
+    'CENTER_VIEW': cornerCatalog.centerView(settings),
     'BATTERY_BAR_STYLE': Number(settings.BATTERY_BAR_STYLE||1)
   };
   cornerCatalog.slots.forEach(function(slot) {
@@ -1374,7 +1367,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
     // Reopen shared weather only when provider or display units actually change.
     var weatherChanged = weatherUpdatesEnabled(previousSettings) !== weatherUpdatesEnabled(settings) ||
       chosenWeatherSource(previousSettings) !== chosenWeatherSource(settings) ||
-      String(previousSettings.CORNER_MODE||0)!==String(settings.CORNER_MODE||0) ||
+      cornerCatalog.centerView(previousSettings)!==cornerCatalog.centerView(settings) ||
       JSON.stringify(weatherPush.watchedKeys(previousSettings,cornerCatalog)) !==
         JSON.stringify(weatherPush.watchedKeys(settings,cornerCatalog)) ||
       desiredTempUnit(previousSettings) !== desiredTempUnit(settings) ||
