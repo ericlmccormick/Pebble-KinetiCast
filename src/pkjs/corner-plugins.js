@@ -107,7 +107,7 @@ function parseSpec(text) {
 }
 function apply(pebble,settings,catalog) {
   cleanup();
-  if(Number(settings.CORNER_MODE||0)!==1)return;
+  // All configurations use the same custom corner renderer.
   var token=generation;
   var selected=catalog.slots.map(function(slot){
     return {slot:slot,metric:catalog.chosenMetric(settings,slot)};
