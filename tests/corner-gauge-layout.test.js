@@ -56,4 +56,14 @@ assert.match(main,/if \(weather_changed\) \{[\s\S]*?corner_redraw\(\);/,
  'Push-only provider changes must invalidate every visible copy');
 assert.match(main,/corner_redraw\(\); \/\/ Also update copied temperature/,
  'Reconnect must repaint copied gauge warnings');
+const push=require('../src/pkjs/weather-push');
+const active={CORNER_TL_GROUP:'weather',CORNER_TL_WEATHER:'2',
+  CORNER_TR_GROUP:'weather',CORNER_TR_WEATHER:'2',
+  CORNER_BL_GROUP:'health',CORNER_BL_HEALTH:'32',
+  CORNER_BR_GROUP:'health',CORNER_BR_HEALTH:'32',
+  SHAKE_ACTION:'2',CENTER_VIEW:'0'};
+const keys=push.watchedKeys(active,catalog);
+for(const key of ['TEMP_CURRENT','TEMP_HIGH','TEMP_LOW','UV_INDEX','IS_NIGHT','TEMP_UNIT'])
+  assert.ok(keys.includes(key),'Combined temperature actually draws '+key);
+assert.ok(!keys.includes('WX_HUMIDITY'),'Unrelated weather values still do not push');
 console.log('Shared original weather arc, all four corner frames, battery gauge and push redraws passed');
