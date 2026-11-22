@@ -66,7 +66,8 @@ static void corner_numeric(GContext *ctx,GRect b,const char *label,const char *v
     GTextAlignmentCenter,b.size.w);
 }
 static void corner_gauge(GContext *ctx,GRect b,int percent,GColor foreground) {
-  if(percent<0)percent=0;if(percent>100)percent=100;
+  if(percent<0)percent=0;
+  if(percent>100)percent=100;
   GRect outer=GRect(14,12,b.size.w-28,b.size.h-24);
   graphics_context_set_stroke_width(ctx,5);
   graphics_context_set_stroke_color(ctx,is_dark_theme()?GColorDarkGray:GColorLightGray);
@@ -107,7 +108,8 @@ static void corner_rings(GContext *ctx,GRect b,bool show_distance) {
   graphics_context_set_stroke_color(ctx,GColorKellyGreen);
   int active_pct=s_active_goal>0?(active*100)/s_active_goal:0;
   int step_pct=s_step_goal>0?(steps*100)/s_step_goal:0;
-  if(active_pct>100)active_pct=100;if(step_pct>100)step_pct=100;
+  if(active_pct>100)active_pct=100;
+  if(step_pct>100)step_pct=100;
   graphics_draw_arc(ctx,r,GOvalScaleModeFitCircle,0,(active_pct*TRIG_MAX_ANGLE)/100);
   graphics_context_set_stroke_color(ctx,GColorPictonBlue);
   graphics_draw_arc(ctx,grect_inset(r,GEdgeInsets(7)),GOvalScaleModeFitCircle,
@@ -125,8 +127,10 @@ static void corner_heart_graph(GContext *ctx,GRect b) {
     if(s_hr_history[i]<=0||s_hr_history[i+1]<=0)continue;
     int y1=r.origin.y+r.size.h-1-(s_hr_history[i]-55)/3;
     int y2=r.origin.y+r.size.h-1-(s_hr_history[i+1]-55)/3;
-    if(y1<r.origin.y)y1=r.origin.y;if(y1>r.origin.y+r.size.h)y1=r.origin.y+r.size.h;
-    if(y2<r.origin.y)y2=r.origin.y;if(y2>r.origin.y+r.size.h)y2=r.origin.y+r.size.h;
+  if(y1<r.origin.y)y1=r.origin.y;
+  if(y1>r.origin.y+r.size.h)y1=r.origin.y+r.size.h;
+  if(y2<r.origin.y)y2=r.origin.y;
+  if(y2>r.origin.y+r.size.h)y2=r.origin.y+r.size.h;
     graphics_context_set_stroke_color(ctx,GColorPictonBlue);
     graphics_draw_line(ctx,GPoint(r.origin.x+((i-41)*r.size.w)/19,y1),
       GPoint(r.origin.x+((i-40)*r.size.w)/19,y2));
@@ -165,7 +169,8 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
       metric==36?(s_active_goal>0?100*corner_active()/s_active_goal:0):
       (s_wx[18]!=KC_MISSING&&s_wx[19]!=KC_MISSING&&s_wx[19]>s_wx[18]?
        (int)(100*(now-s_wx[18])/(s_wx[19]-s_wx[18])):0);
-    if(pct<0)pct=0;if(pct>100)pct=100;
+  if(pct<0)pct=0;
+  if(pct>100)pct=100;
     snprintf(value,sizeof(value),"%d%%",pct);
   }
   switch(metric) {
@@ -182,7 +187,8 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
     case 13:n=s_wx[7];break;
     case 14:n=s_uv;break;
     case 15:n=s_wx[8];break;
-    case 16: n=s_wx[9];if(n!=KC_MISSING){
+    case 16: n=s_wx[9];
+  if(n!=KC_MISSING){
       if(n<0)snprintf(value,sizeof(value),"None");
       else if(n==0)snprintf(value,sizeof(value),"Now");
       else snprintf(value,sizeof(value),"~%dh",n);}break;
@@ -202,12 +208,12 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
     case 34:snprintf(value,sizeof(value),"%s %s",s_dist_buf,s_use_metric?"km":"mi");break;
     case 35:snprintf(value,sizeof(value),"%d min",corner_active());break;
     case 37:case 38:{int bpm=corner_bpm();
-      if(bpm>0)snprintf(value,sizeof(value),"%d",bpm);break;}
+  if(bpm>0)snprintf(value,sizeof(value),"%d",bpm);break;}
     case 39:case 40:case 41: {
       #if defined(PBL_HEALTH)
       int sleep=(int)health_service_sum_today(HealthMetricSleepSeconds);
       int restful=(int)health_service_sum_today(HealthMetricSleepRestfulSeconds);
-      if(metric==39)snprintf(value,sizeof(value),"%dh %dm",sleep/3600,(sleep%3600)/60);
+  if(metric==39)snprintf(value,sizeof(value),"%dh %dm",sleep/3600,(sleep%3600)/60);
       else if(metric==40)snprintf(value,sizeof(value),"%dh %dm",restful/3600,(restful%3600)/60);
       else if(sleep>0)snprintf(value,sizeof(value),"%d%%",100*restful/sleep);
       #endif
@@ -216,13 +222,13 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
     case 42:{
       #if defined(PBL_HEALTH)
       int calories=(int)health_service_sum_today(HealthMetricActiveKCalories);
-      if(calories>=0)snprintf(value,sizeof(value),"%d",calories);
+  if(calories>=0)snprintf(value,sizeof(value),"%d",calories);
       #endif
       break;
     }
     case 50:case 52:snprintf(value,sizeof(value),"%s",s_calendar_title[0]?s_calendar_title:"--");break;
     case 51: if(s_calendar_start>0) {int sec=(int)((int64_t)s_calendar_start-(int64_t)now);
-      if(sec>=3600)snprintf(value,sizeof(value),"%dh %dm",sec/3600,(sec%3600)/60);
+  if(sec>=3600)snprintf(value,sizeof(value),"%dh %dm",sec/3600,(sec%3600)/60);
       else if(sec>0)snprintf(value,sizeof(value),"%d min",(sec+59)/60);
       else snprintf(value,sizeof(value),"Started");}break;
     case 60:if(tm_now)strftime(value,sizeof(value),"%b %d",tm_now);break;
@@ -233,21 +239,22 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
     case 64:if(tm_now)snprintf(value,sizeof(value),"%02d",tm_now->tm_sec);break;
     case 70:case 71:{
       time_t t=(time_t)s_wx[metric==70?18:19];
-      if(t>0){struct tm *s=localtime(&t);if(s)strftime(value,sizeof(value),"%I:%M%p",s);}
+  if(t>0){struct tm *s=localtime(&t);
+  if(s)strftime(value,sizeof(value),"%I:%M%p",s);}
       break;
     }
     case 72:if(s_wx[19]>0){int min=(int)((s_wx[19]-now)/60);
-      if(min>=0)snprintf(value,sizeof(value),"%dh %dm",min/60,min%60);
+  if(min>=0)snprintf(value,sizeof(value),"%dh %dm",min/60,min%60);
       else snprintf(value,sizeof(value),"Night");}break;
     case 74:case 75: {
       // Approximate lunar age anchored to 2000-01-06 18:14 UTC new moon.
       const int64_t cycle=2551443;
       int64_t age=((int64_t)now-947182440LL)%cycle;
-      if(age<0)age+=cycle;
+  if(age<0)age+=cycle;
       int phase=(int)((age*8+cycle/2)/cycle)%8;
       int32_t angle=(int32_t)((age*TRIG_MAX_ANGLE)/cycle);
       int illumination=(int)((50LL*(TRIG_MAX_RATIO-cos_lookup(angle)))/TRIG_MAX_RATIO);
-      if(metric==75)snprintf(value,sizeof(value),"~%d%%",illumination);
+  if(metric==75)snprintf(value,sizeof(value),"~%d%%",illumination);
       else {
         const char *names[]={"New","Wax cres","First q","Wax gibb",
           "Full","Wan gibb","Last q","Wan cres"};
@@ -269,7 +276,7 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
   }
   if(n!=KC_MISSING && metric!=16) {
     const char *unit="";
-    if(metric==6||metric==10||metric==18||metric==28)unit="°";
+  if(metric==6||metric==10||metric==18||metric==28)unit="°";
     else if(metric==7||metric==12||metric==15||metric==17)unit="%";
     else if(metric==8||metric==9)unit=" mph";
     else if(metric==13)unit=" km";
