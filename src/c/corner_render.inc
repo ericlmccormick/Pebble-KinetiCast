@@ -560,7 +560,8 @@ static void corner_apply_visibility(void) {
   bool original_center=center==0;
   bool show_time=center==0||center==1;
   bool original_left=s_corner_metric[0]==1;
-  bool original_right=s_corner_metric[1]==2 && (center==0||center==1);
+  // The original gauge remains valid regardless of which center is chosen.
+  bool original_right=s_corner_metric[1]==2;
   bool original_rings=s_corner_metric[2]==30||s_corner_metric[2]==31;
   bool original_hr=s_corner_metric[3]==38;
 
@@ -578,8 +579,14 @@ static void corner_apply_visibility(void) {
     s_battery_style==0?228:222;
   for(int i=0;i<4;i++) {
     int x=(i%2)*100;
-    if(i<2)layer_set_frame(s_corner_layers[i],GRect(x,0,100,60));
-    else layer_set_frame(s_corner_layers[i],GRect(x,126,100,bottom_y-126));
+    if(i<2) {
+      // Native 64px weather art, 85px combined gauges and HR history need
+      // their full drawing height. Small text-only metrics stay compact so
+      // they cannot accidentally overlap the middle clock.
+      int metric=s_corner_metric[i];
+      int height=(metric==1||metric==2||metric==38)?85:60;
+      layer_set_frame(s_corner_layers[i],GRect(x,0,100,height));
+    } else layer_set_frame(s_corner_layers[i],GRect(x,126,100,bottom_y-126));
     bool legacy=(i==0&&original_left)||(i==1&&original_right)||
       (i==2&&original_rings)||(i==3&&original_hr);
     layer_set_hidden(s_corner_layers[i],legacy);
