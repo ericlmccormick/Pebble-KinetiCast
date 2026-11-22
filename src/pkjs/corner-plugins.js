@@ -92,8 +92,12 @@ function subscribeReading(pebble,slot,spec,index,token) {
       send(pebble,slot,spec.property,'--');
     }};
   if(spec.uuid)req.plugin=spec.uuid;
-  try {active.push(pebble.subscribeToSource(req));}
-  catch(e){console.log('KinetiCast plugin subscribe failed: '+String(e));}
+  try {
+    var subscription=pebble.subscribeToSource(req);
+    active.push(subscription);
+    return subscription;
+  } catch(e){console.log('KinetiCast plugin subscribe failed: '+String(e));}
+  return null;
 }
 function parseSpec(text) {
   if(!text)return null;
@@ -117,18 +121,18 @@ function apply(pebble,settings,catalog) {
     else send(pebble,x.slot,'PLUGIN','Select source');
   });
   var favorites=selected.filter(function(x){return x.metric>=90&&x.metric<=94;});
+  var favoriteSubscriptions={};
   if(!favorites.length || typeof pebble.subscribeToSource!=='function')return;
   try {
     active.push(pebble.subscribeToSource({category:'preferences',item:'complications',
       onData:function(data){
         if(generation!==token)return;
-        // New preferences replace subscriptions to their previous readings.
-        // Keep the preferences subscription at index zero or in the active set.
-        if(active.length>1){
-          var roots=active.filter(function(s){return s&&s._kcPreferences;});
-          // Some native subscription objects are not extensible, so avoid relying on tags.
-          // Do not unsubscribe the preferences source during a resubscription.
-        }
+        // Replace only readings for changed favorite slots; keep preferences alive.
+        Object.keys(favoriteSubscriptions).forEach(function(slot){
+          var old=favoriteSubscriptions[slot];
+          if(old&&typeof old.unsubscribe==='function')try{old.unsubscribe();}catch(e){}
+        });
+        favoriteSubscriptions={};
         favorites.forEach(function(x){
           var list=data&&data.instances||[];
           var pos=x.metric-90;
@@ -138,7 +142,7 @@ function apply(pebble,settings,catalog) {
           var s={category:str('category'),item:str('item'),property:str('property')};
           var index=Number(entry.index&&entry.index.numericValue&&entry.index.numericValue.value)||0;
           if(s.category&&s.item&&s.property)
-            subscribeReading(pebble,x.slot,s,index,token);
+            favoriteSubscriptions[x.slot]=subscribeReading(pebble,x.slot,s,index,token);
           else send(pebble,x.slot,'FAVORITE','--');
         });
       },
