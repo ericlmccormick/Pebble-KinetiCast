@@ -11,6 +11,8 @@ let sent=[];
 const context={
   cornerCatalog:require('../src/pkjs/corner-catalog'),
   cornerWeather:require('../src/pkjs/corner-weather'),
+  weatherPush:require('../src/pkjs/weather-push'),
+  weatherDeliveryFactory:require('../src/pkjs/weather-delivery'),
   Date,Math,JSON,Number,isFinite,parseInt,console:{log(){}},
   readSettings:()=>config,desiredDistanceUnit:(s)=>s.DISTANCE_UNIT||'mi',
   settingEnabled:(v,f)=>v==null?f:!!v,
