@@ -1297,8 +1297,8 @@ static void main_window_load(Window *window) {
   s_battery_layer = layer_create(GRect(0, 222, 200, 6)); 
   layer_set_update_proc(s_battery_layer, battery_update_proc); 
   layer_add_child(w_layer, s_battery_layer);
-  const GRect corner_frames[4]={GRect(0,0,100,75),GRect(100,0,100,75),
-    GRect(0,126,100,96),GRect(100,126,100,96)};
+  const GRect corner_frames[4]={GRect(0,0,100,74),GRect(100,0,100,74),
+    GRect(0,150,100,72),GRect(100,150,100,72)};
   for(int i=0;i<4;i++){
     s_corner_layers[i]=layer_create(corner_frames[i]);
     layer_set_update_proc(s_corner_layers[i],corner_draw_proc);
