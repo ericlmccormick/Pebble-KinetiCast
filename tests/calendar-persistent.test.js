@@ -12,7 +12,7 @@ assert.equal(manifest.pebble.messageKeys.PERSISTENT_CALENDAR_MINUTES,44);
 
 // Configuration values must be the six supported 5-minute increments.
 const prefix = source.slice(source.indexOf('var clayConfig ='), source.indexOf('var clay ='));
-const config = vm.runInNewContext(prefix + '\nclayConfig', {});
+const config = vm.runInNewContext(prefix + '\nclayConfig', {cornerCatalog:require('../src/pkjs/corner-catalog')});
 const items = config.reduce((a,x)=>a.concat(x.items||[]), []);
 const toggle = items.find(x=>x.messageKey === 'PERSISTENT_CALENDAR_ENABLE');
 const lead = items.find(x=>x.messageKey === 'PERSISTENT_CALENDAR_MINUTES');
