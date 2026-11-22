@@ -442,8 +442,8 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
   }
   corner_numeric(ctx,b,corner_label(metric),value,NULL);
 }
-// This atlas is a faithful 24x24 resize of the original 64px resources.
-// Pebble's draw_bitmap_in_rect() crops, rather than scales, source bitmaps.
+// 32x32 transparent weather artwork derived from the original icons.
+// Pebble's draw_bitmap_in_rect() crops (does not scale) source bitmaps.
 static GBitmap *s_compact_atlas=NULL;
 static GBitmap *s_compact_icons[9]={NULL};
 static void compact_icons_init(void) {
@@ -452,7 +452,7 @@ static void compact_icons_init(void) {
   if(!s_compact_atlas)return;
   for(int i=0;i<9;i++)
     s_compact_icons[i]=gbitmap_create_as_sub_bitmap(
-      s_compact_atlas,GRect((i%3)*24,(i/3)*24,24,24));
+      s_compact_atlas,GRect((i%3)*32,(i/3)*32,32,32));
 }
 static void compact_icons_deinit(void) {
   for(int i=0;i<9;i++){
@@ -472,8 +472,12 @@ static int compact_icon_index(const char *code) {
 }
 static void draw_compact_forecast_icon(GContext *ctx,const char *code,int x,int y) {
   int i=compact_icon_index(code);
-  if(s_compact_icons[i])
-    graphics_draw_bitmap_in_rect(ctx,s_compact_icons[i],GRect(x,y,24,24));
+  if(!s_compact_icons[i])return;
+  // The default GCompOpAssign drops alpha and paints transparent PNG pixels
+  // black. Pebble's GCompOpSet preserves the image's transparency.
+  graphics_context_set_compositing_mode(ctx,GCompOpSet);
+  graphics_draw_bitmap_in_rect(ctx,s_compact_icons[i],GRect(x,y,32,32));
+  graphics_context_set_compositing_mode(ctx,GCompOpAssign);
 }
 static void slide_panel_background(GContext *ctx,GRect b){
   graphics_context_set_fill_color(ctx,is_dark_theme()?GColorBlack:GColorWhite);
@@ -522,7 +526,7 @@ static void center_draw_proc(Layer *layer,GContext *ctx) {
     graphics_draw_text(ctx,days[(wd+i+1)%7],
       fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
       GRect(x,0,66,18),GTextOverflowModeTrailingEllipsis,GTextAlignmentCenter,NULL);
-    draw_compact_forecast_icon(ctx,icons[i],x+21,18);
+    draw_compact_forecast_icon(ctx,icons[i],x+17,18);
     char temp[24];
     if(s_has_weather||s_last_weather_success>0||s_d1_hi||s_d1_lo){
       snprintf(temp,sizeof(temp),"%d°/%d°",hi[i],lo[i]);
