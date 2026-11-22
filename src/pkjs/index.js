@@ -6,6 +6,16 @@ var customClay = require('./custom-clay');
 // ==============================================================================
 var clayConfig = [
   { "type": "heading", "defaultValue": "KinetiCast Settings" },
+  {type: 'section', items: [
+    {type: 'heading', defaultValue: 'Appearance'},
+    {type: 'select', messageKey: 'THEME_MODE', label: 'Theme', defaultValue: "0",
+      description: 'Auto follows sunrise and sunset. Without saved times, Day runs from 7 a.m. to 7 p.m.',
+      options: [
+        {label: 'Day', value: '0'},
+        {label: 'Night', value: '1'},
+        {label: 'Auto', value: '2'}
+      ]}
+  ]},
   { "type": "section", "items": [
     { "type": "heading", "defaultValue": "Watchface" },
     { "type": "select", "messageKey": "DEFAULT_VIEW", "label": "Bottom Panel",
@@ -13,12 +23,6 @@ var clayConfig = [
         { "label": "Health", "value": "0" },
         { "label": "3-Day Weather", "value": "1" },
         { "label": "Next Event", "value": "2" }
-      ] },
-    { "type": "select", "messageKey": "THEME_MODE", "label": "Theme",
-      "defaultValue": "0", "options": [
-        { "label": "Day", "value": "0" },
-        { "label": "Night", "value": "1" },
-        { "label": "Auto", "value": "2" }
       ] }
   ] },
   { "type": "section", "items": [

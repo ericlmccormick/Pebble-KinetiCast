@@ -12,13 +12,13 @@ const config=vm.runInNewContext(source.slice(begin,end)+'\nclayConfig',{});
 const groups=config.filter(x=>x.type==='section');
 const names=groups.map(g=>g.items.find(x=>x.type==='heading').defaultValue);
 assert.deepEqual(Array.from(names),[
-  'Watchface','Weather','Calendar','Wrist Gestures','Health & Sleep','Power & Diagnostics'
+  'Appearance','Watchface','Weather','Calendar','Wrist Gestures','Health & Sleep','Power & Diagnostics'
 ]);
 const settings=groups.flatMap(g=>g.items.filter(x=>x.messageKey));
 const byKey=Object.fromEntries(settings.map(x=>[x.messageKey,x]));
 assert.equal(settings.length,new Set(settings.map(x=>x.messageKey)).size,'No duplicate controls');
 const expected = [
-  'DEFAULT_VIEW','THEME_MODE','WEATHER_UPDATES_ENABLED','WEATHER_PROVIDER',
+  'THEME_MODE','DEFAULT_VIEW','WEATHER_UPDATES_ENABLED','WEATHER_PROVIDER',
   'API_KEY','USE_GPS','MANUAL_LOCATION','TEMP_UNIT','UPDATE_FREQ',
   'CALENDAR_FILTER','PERSISTENT_CALENDAR_ENABLE','PERSISTENT_CALENDAR_MINUTES',
   'SHAKE_ACTION','GESTURE_POWER_MODE','SHAKE_SENSITIVITY','SHAKE_LENGTH',
@@ -30,6 +30,7 @@ for(const key of expected) assert.ok(byKey[key],key);
 function values(key) {return Array.from(byKey[key].options.map(x=>String(x.value)));}
 assert.deepEqual(values('DEFAULT_VIEW'),['0','1','2']);
 assert.deepEqual(values('THEME_MODE'),['0','1','2']);
+assert.deepEqual(Array.from(byKey.THEME_MODE.options, o => o.label), ['Day','Night','Auto']);
 assert.deepEqual(values('SHAKE_ACTION'),['0','3','1','4','2']);
 assert.deepEqual(values('GESTURE_POWER_MODE'),['0','1']);
 assert.deepEqual(values('SHAKE_LENGTH'),['0','1','2']);
