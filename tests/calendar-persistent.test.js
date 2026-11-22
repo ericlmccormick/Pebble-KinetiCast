@@ -58,7 +58,7 @@ assert.match(native, /update_persistent_calendar\(\);\s*update_calendar_countdow
 const renderer=fs.readFileSync('src/c/corner_render.inc','utf8');
 assert.match(native,/bool show_calendar=s_calendar_takeover_active\|\|/,
   'Persistent event appears in the sliding bottom overlay');
-assert.match(native,/move_panel\(s_calendar_container,show_calendar\?126:228\);/,
+assert.match(native,/move_panel\(s_calendar_container,show_calendar\?134:228\);/,
   'Persistent calendar slides up from the bottom and down again');
 assert.match(renderer,/return s_center_view;/,
   'Event overlay does not replace the chosen center or clock');
