@@ -378,68 +378,38 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
   }
   corner_numeric(ctx,b,corner_label(metric),value,NULL);
 }
-// Native forecast assets are 64px. graphics_draw_bitmap_in_rect CLIPS
-// rather than scales them, so draw a compact 24px set in center/slide previews.
+// This atlas is a faithful 24x24 resize of the original 64px resources.
+// Pebble's draw_bitmap_in_rect() crops, rather than scales, source bitmaps.
+static GBitmap *s_compact_atlas=NULL;
+static GBitmap *s_compact_icons[9]={NULL};
+static void compact_icons_init(void) {
+  if(s_compact_atlas)return;
+  s_compact_atlas=gbitmap_create_with_resource(RESOURCE_ID_COMPACT_WEATHER_ATLAS);
+  if(!s_compact_atlas)return;
+  for(int i=0;i<9;i++)
+    s_compact_icons[i]=gbitmap_create_as_sub_bitmap(
+      s_compact_atlas,GRect((i%3)*24,(i/3)*24,24,24));
+}
+static void compact_icons_deinit(void) {
+  for(int i=0;i<9;i++){
+    if(s_compact_icons[i]){gbitmap_destroy(s_compact_icons[i]);s_compact_icons[i]=NULL;}
+  }
+  if(s_compact_atlas){gbitmap_destroy(s_compact_atlas);s_compact_atlas=NULL;}
+}
+static int compact_icon_index(const char *code) {
+  if(!code || !code[0] || !code[1])return 8;
+  if(code[0]=='0' && code[1]=='1')return code[2]=='n'?1:0;
+  if(code[0]=='0' && code[1]=='2')return code[2]=='n'?3:2;
+  if(code[0]=='0' && (code[1]=='3'||code[1]=='4'))return 4;
+  if((code[0]=='0'&&code[1]=='9')||(code[0]=='1'&&code[1]=='0'))return 5;
+  if(code[0]=='1'&&code[1]=='1')return 6;
+  if(code[0]=='1'&&code[1]=='3')return 7;
+  return 8;
+}
 static void draw_compact_forecast_icon(GContext *ctx,const char *code,int x,int y) {
-  int kind=(code&&code[0]>='0'&&code[0]<='9'&&code[1]>='0'&&code[1]<='9')?
-    (code[0]-'0')*10+code[1]-'0':3;
-  bool night=code&&code[2]=='n';
-  bool clear=kind==1,partly=kind==2,cloudy=kind==3||kind==4;
-  bool rain=kind==9||kind==10,storm=kind==11,snow=kind==13;
-  bool fog=kind==50;
-  bool draw_sun=clear||partly;
-  if(draw_sun) {
-    GColor sun=GColorChromeYellow;
-    graphics_context_set_stroke_color(ctx,sun);
-    graphics_context_set_stroke_width(ctx,1);
-    if(!night) {
-      for(int k=0;k<8;k++){
-        int dx=k==0||k==4?0:k==2?-8:k==6?8:k==1||k==3?-6:6;
-        int dy=k==2||k==6?0:k==0?-8:k==4?8:k<=2||k==7?-6:6;
-        graphics_draw_line(ctx,GPoint(x+12+dx*2/3,y+10+dy*2/3),
-          GPoint(x+12+dx,y+10+dy));
-      }
-    }
-    graphics_context_set_fill_color(ctx,sun);
-    graphics_fill_circle(ctx,GPoint(x+12,y+10),5);
-    if(night){
-      graphics_context_set_fill_color(ctx,is_dark_theme()?GColorBlack:GColorWhite);
-      graphics_fill_circle(ctx,GPoint(x+15,y+7),5);
-    }
-  }
-  if(!clear) {
-    GColor cloud=is_dark_theme()?GColorLightGray:GColorDarkGray;
-    graphics_context_set_fill_color(ctx,cloud);
-    graphics_fill_circle(ctx,GPoint(x+8,y+12),5);
-    graphics_fill_circle(ctx,GPoint(x+15,y+10),6);
-    graphics_fill_rect(ctx,GRect(x+4,y+12,17,6),0,GCornerNone);
-    if(rain) {
-      graphics_context_set_stroke_color(ctx,GColorPictonBlue);
-      graphics_context_set_stroke_width(ctx,2);
-      graphics_draw_line(ctx,GPoint(x+7,y+20),GPoint(x+5,y+23));
-      graphics_draw_line(ctx,GPoint(x+13,y+20),GPoint(x+11,y+23));
-      graphics_draw_line(ctx,GPoint(x+19,y+20),GPoint(x+17,y+23));
-    } else if(snow){
-      graphics_context_set_stroke_color(ctx,GColorPictonBlue);
-      graphics_context_set_stroke_width(ctx,2);
-      for(int i=0;i<3;i++) {
-        graphics_draw_pixel(ctx,GPoint(x+7+i*6,y+21));
-        graphics_draw_pixel(ctx,GPoint(x+7+i*6,y+23));
-      }
-    } else if(storm){
-      graphics_context_set_stroke_color(ctx,GColorChromeYellow);
-      graphics_context_set_stroke_width(ctx,2);
-      graphics_draw_line(ctx,GPoint(x+13,y+18),GPoint(x+10,y+22));
-      graphics_draw_line(ctx,GPoint(x+10,y+22),GPoint(x+15,y+22));
-      graphics_draw_line(ctx,GPoint(x+15,y+22),GPoint(x+13,y+24));
-    } else if(fog) {
-      graphics_context_set_stroke_color(ctx,GColorPictonBlue);
-      graphics_context_set_stroke_width(ctx,1);
-      graphics_draw_line(ctx,GPoint(x+4,y+20),GPoint(x+20,y+20));
-      graphics_draw_line(ctx,GPoint(x+6,y+23),GPoint(x+18,y+23));
-    }
-  }
-  (void)cloudy;
+  int i=compact_icon_index(code);
+  if(s_compact_icons[i])
+    graphics_draw_bitmap_in_rect(ctx,s_compact_icons[i],GRect(x,y,24,24));
 }
 static void slide_panel_background(GContext *ctx,GRect b){
   graphics_context_set_fill_color(ctx,is_dark_theme()?GColorBlack:GColorWhite);
