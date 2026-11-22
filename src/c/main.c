@@ -617,8 +617,10 @@ static void execute_panel_transition(bool alternate_view) {
   bool show_calendar=s_calendar_takeover_active||
     (alternate_view&&s_panel_override==2);
   bool show_weather=alternate_view&&!show_calendar;
-  move_panel(s_forecast_container,show_weather?126:228);
-  move_panel(s_calendar_container,show_calendar?126:228);
+  // Stop 8px lower than the original 126px slide to leave clearance below
+  // the center time; the forecast/calendar child layout stays unchanged.
+  move_panel(s_forecast_container,show_weather?134:228);
+  move_panel(s_calendar_container,show_calendar?134:228);
 }
 // An active event takeover stays until its exact start time, irrespective of
 // the default panel or any temporary shake preview.
