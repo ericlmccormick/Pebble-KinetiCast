@@ -10,7 +10,8 @@ function series(p,key,now){
   if(!s||!Array.isArray(v)||!isFinite(s.start)||!isFinite(s.stepSec)||s.stepSec<=0)return null;
   var index=Math.floor((now-s.start)/s.stepSec);
   if(index<0||index>=v.length)return null;
-  return {value:v[index],index:index,values:v,unit:s.numericValue.unit||''};
+  return {value:v[index],index:index,values:v,unit:s.numericValue.unit||'',
+    start:s.start,stepSec:s.stepSec};
 }
 function round(n) {
   return typeof n==='number'&&isFinite(n)?Math.round(n):MISSING;
@@ -87,7 +88,7 @@ function augment(dict,props,now){
       var chance=rain.values[i];
       if(typeof chance!=='number'||!isFinite(chance))continue;
       available=true;if(i<rain.index+3&&chance>max)max=chance;
-      if(eta<0&&chance>=50)eta=i-rain.index;
+      if(eta<0&&chance>=50)eta=rain.start+i*rain.stepSec;
     }
     if(available){values.WX_RAIN_ETA=eta;values.WX_RAIN_TREND=round(max);}
   }
