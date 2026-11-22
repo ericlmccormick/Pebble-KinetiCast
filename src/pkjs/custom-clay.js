@@ -70,5 +70,33 @@ module.exports = function() {
     watchControl(showSleep,function() {
       setVisible(item('SLEEP_BRIEF_SECONDS'), enabled(showSleep.get()));
     });
+    // Per-corner nested selectors: category, then exactly one reading picker.
+    var cornerMode=item('CORNER_MODE');
+    var groups=['weather','environment','health','calendar','clock',
+      'astronomy','system','plugin','none'];
+    function updateCorners() {
+      var custom=cornerMode && String(cornerMode.get())==='1';
+      setVisible(hint('corner-info'),!custom);
+      ['TL','TR','BL','BR'].forEach(function(slot) {
+        var base='CORNER_'+slot+'_';
+        var groupSelect=item(base+'GROUP');
+        var group=groupSelect?String(groupSelect.get()):'weather';
+        var pluginMetric=item(base+'PLUGIN');
+        var pluginChosen=pluginMetric && String(pluginMetric.get())==='95';
+        setVisible(hint('corner-title-'+slot),custom);
+        setVisible(groupSelect,custom);
+        groups.forEach(function(key) {
+          setVisible(item(base+key.toUpperCase()),custom&&key===group);
+        });
+        setVisible(item(base+'PLUGIN_SPEC'),custom&&group==='plugin'&&pluginChosen);
+        setVisible(item(base+'INDEX'),custom&&group==='plugin'&&pluginChosen);
+      });
+    }
+    watchControl(cornerMode,updateCorners);
+    ['TL','TR','BL','BR'].forEach(function(slot){
+      watchControl(item('CORNER_'+slot+'_GROUP'),updateCorners);
+      watchControl(item('CORNER_'+slot+'_PLUGIN'),updateCorners);
+    });
+
   });
 };
