@@ -1,4 +1,5 @@
 #include <pebble.h>
+#include "solar_theme.h"
 #include "universal_tts.h"
 
 // ==============================================================================
@@ -156,7 +157,7 @@ static int get_int(Tuple *t) {
 }
 
 static bool is_dark_theme() {
-  return (s_theme_mode == 1) || (s_theme_mode == 2 && s_is_night);
+  return solar_theme_dark(s_theme_mode);
 }
 
 static void request_weather() {
@@ -823,7 +824,9 @@ static void battery_update_proc(Layer *layer, GContext *ctx) {
 // SECTION: DISPLAY UPDATE & DATA HANDLING
 // ==============================================================================
 
+static bool s_applied_theme_dark;
 static void update_theme_colors() {
+  s_applied_theme_dark = is_dark_theme();
   GColor bg_color = is_dark_theme() ? GColorBlack : GColorWhite; 
   GColor fg_color = is_dark_theme() ? GColorWhite : GColorBlack; 
 
@@ -919,6 +922,9 @@ static void set_forecast_range(TextLayer *label, char *text, size_t len,
 }
 
 static void update_time(struct tm *tick_time, TimeUnits units_changed) {
+  struct tm tick_copy = *tick_time;
+  tick_time = &tick_copy;
+  if (s_applied_theme_dark != is_dark_theme()) update_theme_colors();
   int hour = tick_time->tm_hour; 
   if (!clock_is_24h_style()) { hour %= 12; if (hour == 0) hour = 12; } 
   snprintf(s_time_buf, sizeof(s_time_buf), clock_is_24h_style() ? "%02d:%02d" : "%d:%02d", hour, tick_time->tm_min);
@@ -1291,6 +1297,7 @@ static void main_window_unload(Window *window) {
 }
 
 static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
+  if (solar_theme_receive(iter)) { update_theme_colors(); return; }
   if (universal_tts_handle_message(iter)) return;
   Tuple *t = dict_read_first(iter); 
   bool theme_changed = false;
@@ -1405,6 +1412,7 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
 }
 
 static void init() {
+  solar_theme_load();
   s_main_window = window_create(); 
   window_set_window_handlers(s_main_window, (WindowHandlers) { .load = main_window_load, .unload = main_window_unload });
   window_stack_push(s_main_window, true); 

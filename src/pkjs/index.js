@@ -16,9 +16,9 @@ var clayConfig = [
       ] },
     { "type": "select", "messageKey": "THEME_MODE", "label": "Theme",
       "defaultValue": "0", "options": [
-        { "label": "Light", "value": "0" },
-        { "label": "Dark", "value": "1" },
-        { "label": "Automatic (day/night)", "value": "2" }
+        { "label": "Day", "value": "0" },
+        { "label": "Night", "value": "1" },
+        { "label": "Auto", "value": "2" }
       ] }
   ] },
   { "type": "section", "items": [
@@ -1158,7 +1158,13 @@ function getWeather() {
 // SECTION: APP EVENT HANDLERS
 // ==============================================================================
 
+var weatherTheme;
+function updateSolarTheme() {
+  if (!weatherTheme) weatherTheme = require('./theme-weather').create(Pebble, require('message_keys'));
+  weatherTheme.setAuto(Number(readSettings().THEME_MODE) === 2);
+}
 Pebble.addEventListener('ready', function() {
+  updateSolarTheme();
   if (weatherUpdatesEnabled() && chosenWeatherSource(readSettings()) === 'weatherplus') startWeatherPlus();
   else if (weatherUpdatesEnabled()) getWeather();
   if (calendarFeaturesEnabled()) startCalendarSource();
@@ -1229,6 +1235,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
 
   // Save the string-keyed configuration back to memory
   localStorage.setItem('clay-settings', JSON.stringify(syncLegacyPreferences(settings)));
+  updateSolarTheme();
 
   // Build the numerical dictionary the watch's C code is expecting
   var appDict = {

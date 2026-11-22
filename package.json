@@ -59,7 +59,11 @@
             "GESTURE_POWER_MODE": 45,
             "HEALTH_LIVE_UPDATES": 46,
             "WEATHER_UPDATES_ENABLED": 47,
-            "REQUEST_NEXT_EVENT": 48
+            "REQUEST_NEXT_EVENT": 48,
+            "VG_SUNRISE": 49,
+            "VG_SUNSET": 50,
+            "VG_NEXT_SUNRISE": 51,
+            "VG_NEXT_SUNSET": 52
         },
         "projectType": "native",
         "resources": {
@@ -221,6 +225,7 @@
         },
         "manifestVersion": 2,
         "usesPermissions": [
+      {"name":"Location","reason":"Read sunrise and sunset for Auto appearance","required":false},
             {
                 "name": "InvokeAction",
                 "plugin": "2c5edc42-b096-4f76-b284-1f27907e6502"
