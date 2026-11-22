@@ -11,7 +11,7 @@
       "configurable",
       "health"
     ],
-    "displayName": "KinetiCast - Health and Weather",
+    "displayName": "KinetiCast Preview",
     "enableMultiJS": true,
     "messageKeys": {
       "API_KEY": 13,
@@ -304,7 +304,7 @@
     "targetPlatforms": [
       "emery"
     ],
-    "uuid": "7f3f1294-e524-4050-bc8b-60248df17363",
+    "uuid": "f714c3de-9a38-4c4f-9486-2290af72e3b5",
     "watchapp": {
       "watchface": true
     },
