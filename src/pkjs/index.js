@@ -649,7 +649,8 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
-    'HEALTH_LIVE_UPDATES': settingEnabled(settings.HEALTH_LIVE_UPDATES,true) ? 1 : 0,
+    'HEALTH_LIVE_UPDATES': (cornerCatalog.usesHealth(settings) &&
+      settingEnabled(settings.HEALTH_LIVE_UPDATES,true)) ? 1 : 0,
     'WEATHER_UPDATES_ENABLED': weatherUpdatesEnabled(settings) ? 1 : 0,
     'GESTURE_POWER_MODE': Number(settings.GESTURE_POWER_MODE||0) === 1 ? 1 : 0,
     'PERSISTENT_CALENDAR_ENABLE': settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false) ? 1 : 0,
@@ -1337,13 +1338,15 @@ Pebble.addEventListener('webviewclosed', function(e) {
     'DISTANCE_UNIT': desiredDistanceUnit(settings) === 'km' ? 1 : 0,
     'TEMP_UNIT': temperatureUnitId(desiredTempUnit(settings)),
     'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ) || 30,
-    'SHOW_SLEEP': (settings.SHOW_SLEEP == true || settings.SHOW_SLEEP === "true" || settings.SHOW_SLEEP == 1) ? 1 : 0,
+    'SHOW_SLEEP': (cornerCatalog.usesHealth(settings) &&
+      settingEnabled(settings.SHOW_SLEEP,true)) ? 1 : 0,
     'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
     'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
     'PERSISTENT_CALENDAR_ENABLE': settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false) ? 1 : 0,
     'PERSISTENT_CALENDAR_MINUTES': persistentCalendarMinutes(settings.PERSISTENT_CALENDAR_MINUTES),
     'WEATHER_UPDATES_ENABLED': weatherUpdatesEnabled(settings) ? 1 : 0,
-    'HEALTH_LIVE_UPDATES': settingEnabled(settings.HEALTH_LIVE_UPDATES, true) ? 1 : 0,
+    'HEALTH_LIVE_UPDATES': (cornerCatalog.usesHealth(settings) &&
+      settingEnabled(settings.HEALTH_LIVE_UPDATES,true)) ? 1 : 0,
     'GESTURE_POWER_MODE': Number(settings.GESTURE_POWER_MODE || 0) === 1 ? 1 : 0,
     'SHAKE_ACTION': parseInt(settings.SHAKE_ACTION, 10) || 0,
     'SHAKE_SENSITIVITY': normalizeShakeThreshold(settings.SHAKE_SENSITIVITY),
