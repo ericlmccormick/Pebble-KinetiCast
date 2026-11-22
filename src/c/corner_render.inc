@@ -239,9 +239,15 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
   time_t now=time(NULL);
   struct tm *tm_now=localtime(&now);
   if(metric==1 && s_weather_bitmap){
-    int size=b.size.h<=75?62:75;
+    // All corner positions use the native 64px icon. Pebble clips when
+    // asked to draw it smaller, and the default mode discards alpha.
+    int size=64;
+    int y=(b.size.h-size)/2;
+    if(y<0)y=0;
+    graphics_context_set_compositing_mode(ctx,GCompOpSet);
     graphics_draw_bitmap_in_rect(ctx,s_weather_bitmap,
-      GRect((b.size.w-size)/2,(b.size.h-size)/2,size,size));
+      GRect((b.size.w-size)/2,y,size,size));
+    graphics_context_set_compositing_mode(ctx,GCompOpAssign);
     return;
   }
   if(metric==19) {
@@ -261,16 +267,29 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
     return;
   }
   if(metric==2) {
-    if(s_has_weather) {
-      corner_gauge(ctx,b,(s_hi>s_lo)?100*(s_cur-s_lo)/(s_hi-s_lo):50,GColorPictonBlue);
-      snprintf(value,sizeof(value),"%d°",s_cur);
-      snprintf(extra,sizeof(extra),"%d° / %d°",s_lo,s_hi);
-    }
-    corner_numeric(ctx,b,"WEATHER",value,extra);return;
+    // Identical to the original top-right 90x85 gauge, including 3 readings,
+    // UV marker, color thresholds and stale-data indicator. Center the same
+    // native gauge in any chosen corner; never stack generic numeric text.
+    const int w=90,h=85;
+    int x=(b.size.w-w)/2;
+    int y=b.size.h>h?(b.size.h-h)/2:0;
+    draw_combined_temperature(ctx,GRect(x,y,w,h));
+    return;
   }
   if(metric==30||metric==31){corner_rings(ctx,b,metric==30);return;}
   if(metric==76||metric==77){corner_moon_image(ctx,b,now,metric==76);return;}
-  if(metric==81){corner_gauge(ctx,b,s_battery_level,GColorKellyGreen);}
+  if(metric==81){
+    // Gauge and number form one composition; generic label/value drawing
+    // overlaid the arc and created the same collision as the weather gauge.
+    corner_gauge(ctx,b,s_battery_level,GColorKellyGreen);
+    char battery_pct[12];
+    snprintf(battery_pct,sizeof(battery_pct),"%d%%",s_battery_level);
+    graphics_context_set_text_color(ctx,fg);
+    corner_text(ctx,battery_pct,b.size.h/2-12,26,
+      fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
+      GTextAlignmentCenter,b.size.w);
+    return;
+  }
   if(metric==33||metric==36||metric==73) {
     int pct=metric==33?(s_step_goal>0?100*corner_steps()/s_step_goal:0):
       metric==36?(s_active_goal>0?100*corner_active()/s_active_goal:0):
