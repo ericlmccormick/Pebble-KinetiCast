@@ -5,7 +5,7 @@ const deliver=require('../src/pkjs/weather-delivery');
 const catalog=require('../src/pkjs/corner-catalog');
 const fs=require('node:fs');
 function config(){
-  return {CORNER_MODE:1,
+  return {CENTER_VIEW:0,SHAKE_ACTION:'2',
     CORNER_TL_GROUP:'weather',CORNER_TL_WEATHER:'3',
     CORNER_TR_GROUP:'weather',CORNER_TR_WEATHER:'14',
     CORNER_BL_GROUP:'health',CORNER_BL_HEALTH:'30',
@@ -21,12 +21,14 @@ assert.equal(push.requiresWeather(cfg,catalog),true);
 cfg.CORNER_TR_GROUP='health';cfg.CORNER_TR_HEALTH='32';
 assert.deepEqual(push.watchedKeys(cfg,catalog),['TEMP_CURRENT','TEMP_UNIT']);
 assert.equal(push.requiresWeather({...cfg,CORNER_TL_GROUP:'health',CORNER_TL_HEALTH:'32'},catalog),false);
-assert.ok(push.watchedKeys({CORNER_MODE:0},catalog).includes('DAY3_HIGH'),
-  'Classic still feeds legacy three-day forecast');
-assert.ok(push.properties({CORNER_MODE:1,
+assert.ok(push.watchedKeys({...config(),CENTER_VIEW:3},catalog).includes('DAY3_HIGH'),
+  'The center forecast includes the 3-day data');
+assert.ok(push.watchedKeys({...config(),CENTER_VIEW:3},catalog).includes('DAY3_ICON'),
+  'The center forecast also includes its weather icons');
+assert.ok(push.properties({CENTER_VIEW:0,SHAKE_ACTION:'2',
   CORNER_TL_GROUP:'astronomy',CORNER_TL_ASTRONOMY:'70'},catalog).includes('daily_sunrise'),
   'Astronomy selected without weather corners must request sunrise');
-const rainCfg={CORNER_MODE:1,CORNER_TL_GROUP:'weather',CORNER_TL_WEATHER:'16'};
+const rainCfg={CENTER_VIEW:0,SHAKE_ACTION:'2',CORNER_TL_GROUP:'weather',CORNER_TL_WEATHER:'16'};
 assert.ok(push.properties(rainCfg,catalog).includes('hourly_precipitation'));
 assert.ok(push.watchedKeys(rainCfg,catalog).includes('WX_RAIN_ETA'));
 assert.ok(!push.watchedKeys(rainCfg,catalog).includes('WX_HUMIDITY'));
