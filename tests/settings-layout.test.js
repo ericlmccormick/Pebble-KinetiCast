@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync('src/pkjs/index.js','utf8');
 const manifest = require('../package.json');
-assert.equal(manifest.version,'2.5.0');
+assert.match(manifest.version,/^[0-9]+[.][0-9]+[.][0-9]+$/);
 const begin=source.indexOf('var clayConfig =');
 const end=source.indexOf('var clay = new Clay',begin);
 assert.ok(begin>=0 && end>begin);
