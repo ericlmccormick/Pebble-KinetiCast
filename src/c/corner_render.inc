@@ -58,11 +58,12 @@ static void corner_text(GContext *ctx,const char *text,int y,int h,GFont font,
 static void corner_numeric(GContext *ctx,GRect b,const char *label,const char *value,const char *aux) {
   graphics_context_set_text_color(ctx,is_dark_theme()?GColorWhite:GColorBlack);
   corner_text(ctx,label,1,18,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),GTextAlignmentCenter,b.size.w);
-  int mainY=(aux&&aux[0])?18:23;
+  bool show_aux=aux&&aux[0]&&b.size.h>=70;
+  int mainY=show_aux?18:23;
   GFont font=fonts_get_system_font(strlen(value)>9?FONT_KEY_GOTHIC_18_BOLD:
     strlen(value)>6?FONT_KEY_GOTHIC_24_BOLD:FONT_KEY_GOTHIC_28_BOLD);
   corner_text(ctx,value,mainY,32,font,GTextAlignmentCenter,b.size.w);
-  if(aux&&aux[0])corner_text(ctx,aux,b.size.h-20,18,fonts_get_system_font(FONT_KEY_GOTHIC_14),
+  if(show_aux)corner_text(ctx,aux,b.size.h-20,18,fonts_get_system_font(FONT_KEY_GOTHIC_14),
     GTextAlignmentCenter,b.size.w);
 }
 static void corner_gauge(GContext *ctx,GRect b,int percent,GColor foreground) {
@@ -98,7 +99,10 @@ static int corner_active(void) {
 }
 static void corner_rings(GContext *ctx,GRect b,bool show_distance) {
   int steps=corner_steps(),active=corner_active();
-  GRect r=GRect((b.size.w-72)/2,(b.size.h-72)/2,72,72);
+  int size=b.size.h-4;
+  if(size>72)size=72;
+  if(size<36)size=36;
+  GRect r=GRect((b.size.w-size)/2,(b.size.h-size)/2,size,size);
   graphics_context_set_antialiased(ctx,true);
   graphics_context_set_stroke_width(ctx,3);
   graphics_context_set_stroke_color(ctx,is_dark_theme()?GColorDarkGray:GColorLightGray);
@@ -117,7 +121,8 @@ static void corner_rings(GContext *ctx,GRect b,bool show_distance) {
   graphics_context_set_text_color(ctx,is_dark_theme()?GColorWhite:GColorBlack);
   if(show_distance) {
     corner_text(ctx,s_dist_buf[0]?s_dist_buf:"--",b.size.h/2-14,28,
-      fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),GTextAlignmentCenter,b.size.w);
+      fonts_get_system_font(size<64?FONT_KEY_GOTHIC_18_BOLD:FONT_KEY_GOTHIC_24_BOLD),
+      GTextAlignmentCenter,b.size.w);
   }
 }
 static void corner_heart_graph(GContext *ctx,GRect b) {
@@ -338,6 +343,11 @@ static void corner_apply_visibility(void) {
   bool custom=s_corner_mode!=0;
   bool legacy_bottom=!custom||s_view_is_swapped||s_calendar_takeover_active;
   bool show_custom=custom&&!legacy_bottom;
+  // Reserve enough room for the chosen battery strip, including its percentage label.
+  int bottom_y=s_battery_style==3?211:s_battery_style==2?218:
+    s_battery_style==0?228:222;
+  for(int i=2;i<4;i++)layer_set_frame(s_corner_layers[i],
+    GRect(i==2?0:100,150,100,bottom_y-150));
   // The two top corners, date and clock, and bottom corners never overlap.
   // During a temporary full-width view, restore the entire legacy arrangement.
   layer_set_frame(text_layer_get_layer(s_date_layer),show_custom?
