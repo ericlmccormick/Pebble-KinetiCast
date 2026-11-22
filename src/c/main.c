@@ -1492,6 +1492,82 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     else if(t->key == MESSAGE_KEY_DAY3_LOW) s_d3_lo = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY3_ICON && t->type == TUPLE_CSTRING) { if(strcmp(s_d3_ic, t->value->cstring)) { snprintf(s_d3_ic, sizeof(s_d3_ic), "%s", t->value->cstring); forecast_icons_changed = true; }}
 
+    else if(t->key == MESSAGE_KEY_CORNER_MODE){
+      s_corner_mode=get_int(t)==1?1:0;layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_BATTERY_BAR_STYLE){
+      int style=get_int(t);
+      if(style>=0&&style<=3){
+        s_battery_style=style;
+        if(s_battery_layer)layer_set_frame(s_battery_layer,
+          style==2?GRect(0,218,200,10):style==3?GRect(0,211,200,17):
+          GRect(0,222,200,6));
+        if(s_battery_layer)layer_mark_dirty(s_battery_layer);
+        layout_changed=true;
+      }
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_TL){int n=get_int(t);if(n>=0&&n<=95)s_corner_metric[0]=n;layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_CORNER_TL_LABEL && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_title[0],sizeof(s_corner_plugin_title[0]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_TL_VALUE && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_value[0],sizeof(s_corner_plugin_value[0]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_TR){int n=get_int(t);if(n>=0&&n<=95)s_corner_metric[1]=n;layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_CORNER_TR_LABEL && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_title[1],sizeof(s_corner_plugin_title[1]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_TR_VALUE && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_value[1],sizeof(s_corner_plugin_value[1]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_BL){int n=get_int(t);if(n>=0&&n<=95)s_corner_metric[2]=n;layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_CORNER_BL_LABEL && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_title[2],sizeof(s_corner_plugin_title[2]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_BL_VALUE && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_value[2],sizeof(s_corner_plugin_value[2]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_BR){int n=get_int(t);if(n>=0&&n<=95)s_corner_metric[3]=n;layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_CORNER_BR_LABEL && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_title[3],sizeof(s_corner_plugin_title[3]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_BR_VALUE && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_value[3],sizeof(s_corner_plugin_value[3]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_WX_FEELS){s_wx[0]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_HUMIDITY){s_wx[1]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_WIND_SPEED){s_wx[2]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_WIND_GUST){s_wx[3]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_DEW_POINT){s_wx[4]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_PRESSURE){s_wx[5]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_CLOUD){s_wx[6]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_VISIBILITY){s_wx[7]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_RAIN_CHANCE){s_wx[8]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_RAIN_ETA){s_wx[9]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_AQI){s_wx[10]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_PM25){s_wx[11]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_PM10){s_wx[12]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_OZONE){s_wx[13]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_WAVE_HEIGHT){s_wx[14]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_WAVE_PERIOD){s_wx[15]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_SWELL_HEIGHT){s_wx[16]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_SEA_TEMP){s_wx[17]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_SUNRISE){s_wx[18]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_SUNSET){s_wx[19]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_RAIN_TREND){s_wx[20]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_TEMP_TREND){s_wx[21]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_ALERT && t->type==TUPLE_CSTRING){
+      snprintf(s_wx_alert,sizeof(s_wx_alert),"%s",t->value->cstring);layout_changed=true;
+    }
+
     t = dict_read_next(iter); 
   }
   save_weather_data(); 
@@ -1499,7 +1575,7 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
   if (weather_changed) layer_mark_dirty(s_weather_arc_layer);
   
   if (theme_changed) update_theme_colors(); 
-  if (layout_changed) { s_panel_override = -1; execute_panel_transition(false); }
+  if (layout_changed) { s_panel_override = -1; execute_panel_transition(false); corner_redraw(); }
   update_persistent_calendar();
   update_calendar_countdown(); 
   
