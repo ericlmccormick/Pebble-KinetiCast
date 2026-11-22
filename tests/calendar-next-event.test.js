@@ -13,7 +13,9 @@ assert.match(source,/Show Next Event \(7s\)/);
 assert.match(c,/s_center_view=0/);
 assert.match(c,/MESSAGE_KEY_CENTER_VIEW/);
 const renderer=fs.readFileSync('src/c/corner_render.inc','utf8');
-assert.match(renderer,/if\(s_calendar_takeover_active\)return 2;/);
+assert.match(c,/bool show_calendar=s_calendar_takeover_active\|\|/,
+      'Wrist and persistent calendar preview use the original sliding bottom panel');
+assert.match(renderer,/return s_center_view;/,'Wrist flick cannot replace chosen center');
 assert.match(renderer,/if\(mode==2\) \{/);
 assert.match(c,/MESSAGE_KEY_NEXT_EVENT_START/);
 assert.match(c,/update_calendar_countdown\(void\)/);
