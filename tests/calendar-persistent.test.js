@@ -55,7 +55,9 @@ assert.match(native, /uint32_t next_transition = remaining > lead_seconds/);
 assert.match(native, /\(desired_transition - \(uint32_t\)now\) \* 1000/);
 assert.match(native, /next_transition > 0 && next_transition <= 1800/);
 assert.match(native, /update_persistent_calendar\(\);\s*update_calendar_countdown\(\);/);
-assert.match(native, /int target = s_calendar_takeover_active \? 2 :/);
+const renderer=fs.readFileSync('src/c/corner_render.inc','utf8');
+assert.match(renderer,/if\(s_calendar_takeover_active\)return 2;/,
+  'Persistent event takes over only the configurable center');
 assert.match(native, /&& !s_calendar_takeover_active\)/);
 assert.match(native, /if \(!s_shake_test_panel \|\| s_calendar_takeover_active\) return;/);
 assert.match(native, /persist_write_bool\(PERSIST_KEY_PERSISTENT_CALENDAR, s_persistent_calendar_enabled\)/);
