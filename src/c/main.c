@@ -278,7 +278,7 @@ static void load_weather_data() {
   if(persist_exists(PERSIST_KEY_WX_ALERT))
     persist_read_string(PERSIST_KEY_WX_ALERT,s_wx_alert,sizeof(s_wx_alert));
   if(persist_exists(PERSIST_KEY_CORNER_MODE))
-    s_corner_mode=persist_read_int(PERSIST_KEY_CORNER_MODE)==1?1:0;
+    {int mode=persist_read_int(PERSIST_KEY_CORNER_MODE);s_corner_mode=mode>=0&&mode<=4?mode:0;}
   if(persist_exists(PERSIST_KEY_BATTERY_STYLE)){
     int style=persist_read_int(PERSIST_KEY_BATTERY_STYLE);
     s_battery_style=style>=0&&style<=3?style:1;
@@ -1495,7 +1495,7 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     else if(t->key == MESSAGE_KEY_DAY3_ICON && t->type == TUPLE_CSTRING) { if(strcmp(s_d3_ic, t->value->cstring)) { snprintf(s_d3_ic, sizeof(s_d3_ic), "%s", t->value->cstring); forecast_icons_changed = true; }}
 
     else if(t->key == MESSAGE_KEY_CORNER_MODE){
-      s_corner_mode=get_int(t)==1?1:0;layout_changed=true;
+      {int mode=get_int(t);s_corner_mode=mode>=0&&mode<=4?mode:0;}layout_changed=true;
     }
     else if(t->key == MESSAGE_KEY_BATTERY_BAR_STYLE){
       int style=get_int(t);
