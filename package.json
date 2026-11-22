@@ -144,7 +144,11 @@
       "WX_SUNRISE": 130,
       "WX_SUNSET": 131,
       "WX_RAIN_TREND": 132,
-      "WX_TEMP_TREND": 133
+      "WX_TEMP_TREND": 133,
+      "CORNER_TL_PLUGIN_SPEC": 134,
+      "CORNER_TR_PLUGIN_SPEC": 135,
+      "CORNER_BL_PLUGIN_SPEC": 136,
+      "CORNER_BR_PLUGIN_SPEC": 137
     },
     "projectType": "native",
     "resources": {
