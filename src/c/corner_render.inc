@@ -140,6 +140,10 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
   int slot=-1;for(int i=0;i<4;i++)if(s_corner_layers[i]==layer){slot=i;break;}
   if(slot<0||!s_corner_mode)return;
   int metric=s_corner_metric[slot];
+  if(s_corner_mode>=2&&s_corner_mode<=4){
+    const int preset[3][4]={{1,2,14,16},{1,80,30,38},{1,2,52,80}};
+    metric=preset[s_corner_mode-2][slot];
+  }
   if(metric==0)return;
   GRect b=layer_get_bounds(layer);
   GColor fg=is_dark_theme()?GColorWhite:GColorBlack;
