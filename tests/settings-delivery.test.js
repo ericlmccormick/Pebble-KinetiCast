@@ -31,7 +31,7 @@ assert.ok(marker>0 && sync>marker && sync < source.indexOf('var weatherChanged =
 const settings = {
  PERSISTENT_CALENDAR_ENABLE:true, PERSISTENT_CALENDAR_MINUTES:'20',
  WEATHER_UPDATES_ENABLED:false, HEALTH_LIVE_UPDATES:false,
- GESTURE_POWER_MODE:'1', DEFAULT_VIEW:'0', SHAKE_ACTION:'0'
+ GESTURE_POWER_MODE:'1', CENTER_VIEW:'0', SHAKE_ACTION:'2'
 };
 const helpers = {
  settings,
@@ -40,21 +40,26 @@ const helpers = {
  temperatureUnitId:()=>0,normalizeShakeThreshold:()=>300,
  persistentCalendarMinutes:v=>Number(v),
  settingEnabled:(v,def)=>v==null?def:[true,1,'1','true'].includes(v),
- weatherUpdatesEnabled:s=>s.WEATHER_UPDATES_ENABLED !== false
+ weatherUpdatesEnabled:s=>require('../src/pkjs/corner-catalog').usesWeather(s)
 };
 const dictionary = vm.runInNewContext(packetSource+';appDict',helpers);
 assert.equal(dictionary.PERSISTENT_CALENDAR_ENABLE,1);
 assert.equal(dictionary.PERSISTENT_CALENDAR_MINUTES,20);
-assert.equal(dictionary.WEATHER_UPDATES_ENABLED,0);
+assert.equal(dictionary.WEATHER_UPDATES_ENABLED,1,
+  'The default weather corners activate weather even with a saved false toggle');
+assert.equal(dictionary.CENTER_VIEW,0);
 assert.equal(dictionary.HEALTH_LIVE_UPDATES,0);
 assert.equal(dictionary.GESTURE_POWER_MODE,1);
 settings.PERSISTENT_CALENDAR_ENABLE=false;
 settings.PERSISTENT_CALENDAR_MINUTES='5';
 settings.WEATHER_UPDATES_ENABLED=true;
 settings.GESTURE_POWER_MODE='0';
+settings.CORNER_TL_GROUP='health';settings.CORNER_TL_HEALTH='32';
+settings.CORNER_TR_GROUP='health';settings.CORNER_TR_HEALTH='37';
 const off=vm.runInNewContext(packetSource+';appDict',helpers);
 assert.equal(off.PERSISTENT_CALENDAR_ENABLE,0);
 assert.equal(off.PERSISTENT_CALENDAR_MINUTES,5);
-assert.equal(off.WEATHER_UPDATES_ENABLED,1);
+assert.equal(off.WEATHER_UPDATES_ENABLED,0,
+  'Without weather corners, center, or preview, weather turns off automatically');
 assert.equal(off.GESTURE_POWER_MODE,0);
 console.log('Phone-to-watch settings propagation regressions passed');
