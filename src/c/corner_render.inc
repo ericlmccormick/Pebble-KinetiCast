@@ -179,14 +179,16 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
   }
   if(metric==19) {
     graphics_context_set_text_color(ctx,fg);
-    corner_text(ctx,"3-DAY FORECAST",0,18,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+    corner_text(ctx,"3-DAY FORECAST",0,16,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
       GTextAlignmentCenter,b.size.w);
     int hi[3]={s_d1_hi,s_d2_hi,s_d3_hi};
     int lo[3]={s_d1_lo,s_d2_lo,s_d3_lo};
+    int row_height=(b.size.h-16)/3;
     for(int i=0;i<3;i++){
       char row[32];
-      snprintf(row,sizeof(row),"+%d  %d°/%d°",i+1,hi[i],lo[i]);
-      corner_text(ctx,row,18+i*19,20,fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
+      snprintf(row,sizeof(row),"+%d %d°/%d°",i+1,hi[i],lo[i]);
+      corner_text(ctx,row,16+i*row_height,row_height+2,
+        fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
         GTextAlignmentCenter,b.size.w);
     }
     return;
