@@ -1306,7 +1306,8 @@ static void main_window_load(Window *window) {
   }
   if(s_battery_style==2)layer_set_frame(s_battery_layer,GRect(0,218,200,10));
   else if(s_battery_style==3)layer_set_frame(s_battery_layer,GRect(0,211,200,17));
-  corner_apply_visibility(); 
+  corner_apply_visibility();
+  corner_sync_seconds(); 
   
   s_shake_test_panel = layer_create(GRect(0, 126, 200, 96));
   layer_set_update_proc(s_shake_test_panel, shake_test_background_proc);
@@ -1378,6 +1379,7 @@ static void main_window_unload(Window *window) {
   bitmap_layer_destroy(s_f_icon2_layer); 
   bitmap_layer_destroy(s_f_icon3_layer); 
   
+  if(s_corner_seconds_timer){app_timer_cancel(s_corner_seconds_timer);s_corner_seconds_timer=NULL;}
   layer_destroy(s_health_container);
   for(int i=0;i<4;i++){if(s_corner_layers[i]){layer_destroy(s_corner_layers[i]);s_corner_layers[i]=NULL;}} 
   layer_destroy(s_forecast_container);
@@ -1575,7 +1577,7 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
   if (weather_changed) layer_mark_dirty(s_weather_arc_layer);
   
   if (theme_changed) update_theme_colors(); 
-  if (layout_changed) { s_panel_override = -1; execute_panel_transition(false); corner_redraw(); }
+  if (layout_changed) { s_panel_override = -1; execute_panel_transition(false); corner_sync_seconds(); corner_redraw(); }
   update_persistent_calendar();
   update_calendar_countdown(); 
   
