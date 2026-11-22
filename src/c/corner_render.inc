@@ -242,8 +242,11 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
     case 32:snprintf(value,sizeof(value),"%d",corner_steps());break;
     case 34:snprintf(value,sizeof(value),"%s %s",s_dist_buf,s_use_metric?"km":"mi");break;
     case 35:snprintf(value,sizeof(value),"%d min",corner_active());break;
-    case 37:case 38:{int bpm=corner_bpm();
-  if(bpm>0)snprintf(value,sizeof(value),"%d",bpm);break;}
+    case 37:case 38: {
+      int bpm=corner_bpm();
+      if(bpm>0) snprintf(value,sizeof(value),"%d",bpm);
+      break;
+    }
     case 39:case 40:case 41: {
       #if defined(PBL_HEALTH)
       int sleep=(int)health_service_sum_today(HealthMetricSleepSeconds);
