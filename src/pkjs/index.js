@@ -153,7 +153,10 @@ var cornerItems = [
   {type:'heading',defaultValue:'Complications'},
   {type:'select',messageKey:'CORNER_MODE',label:'Layout',
    defaultValue:'0',options:[{label:'Classic (unchanged)',value:'0'},
-     {label:'Custom (four corners)',value:'1'}]},
+     {label:'Custom (four corners)',value:'1'},
+      {label:'Weather Focus',value:'2'},
+      {label:'Fitness Focus',value:'3'},
+      {label:'Agenda Focus',value:'4'}]},
   {type:'text',id:'corner-info',defaultValue:
    'All corners may display any type of reading. Classic retains the existing full-width bottom-panel behavior.'}
 ];
@@ -1318,7 +1321,7 @@ Pebble.addEventListener('webviewclosed', function(e) {
     'SHAKE_LENGTH': settings.SHAKE_LENGTH === undefined ? 2 : parseInt(settings.SHAKE_LENGTH, 10),
     'HR_GRAPH_WINDOW': parseInt(settings.HR_GRAPH_WINDOW, 10) || 20,
     'SLEEP_BRIEF_SECONDS': parseInt(settings.SLEEP_BRIEF_SECONDS, 10) || 0,
-    'CORNER_MODE': Number(settings.CORNER_MODE||0) === 1 ? 1 : 0,
+    'CORNER_MODE': Math.min(4,Math.max(0,Number(settings.CORNER_MODE||0))),
     'BATTERY_BAR_STYLE': Number(settings.BATTERY_BAR_STYLE||1)
   };
   cornerCatalog.slots.forEach(function(slot) {
