@@ -47,6 +47,7 @@ static const char *corner_label(int metric) {
     case 66:return "TIME";
     case 70:return "SUNRISE";case 71:return "SUNSET";case 72:return "DAYLIGHT";
     case 73:return "DAYLIGHT";case 74:return "MOON";case 75:return "MOON LIT";
+    case 76:return "MOON IMAGE";
     case 80:return "BATTERY";case 81:return "BATTERY";case 82:return "DAYS LEFT";
     case 83:return "CHARGING";case 84:return "PHONE";case 85:return "QUIET TIME";
     default:return "";
@@ -134,6 +135,68 @@ static void corner_rings(GContext *ctx,GRect b,bool show_distance) {
       GTextAlignmentCenter,b.size.w);
   }
 }
+// Lunar age runs from new moon (0) through waxing (1..499), full (500)
+// and waning (501..999). Uses the existing UTC new-moon reference and mean
+// synodic month; no weather provider, coordinates or Bluetooth poll required.
+#define MOON_CYCLE_SECONDS 2551443LL
+#define MOON_REFERENCE_UTC 947182440LL
+static int moon_cycle_thousandths(time_t utc) {
+  int64_t seconds=((int64_t)utc-MOON_REFERENCE_UTC)%MOON_CYCLE_SECONDS;
+  if(seconds<0)seconds+=MOON_CYCLE_SECONDS;
+  return (int)((seconds*1000LL)/MOON_CYCLE_SECONDS);
+}
+static int moon_cosine(int phase) {
+  // Pebble trigonometric lookups are fixed point and avoid libm/float.
+  return cos_lookup((int32_t)(((int64_t)phase*TRIG_MAX_ANGLE)/1000LL));
+}
+static int moon_illumination(int phase) {
+  int32_t cosine=moon_cosine(phase);
+  return (int)((50LL*(TRIG_MAX_RATIO-cosine)+TRIG_MAX_RATIO/2)/TRIG_MAX_RATIO);
+}
+static void corner_moon_image(GContext *ctx,GRect b,time_t now) {
+  int phase=moon_cycle_thousandths(now);
+  int illumination=moon_illumination(phase);
+  int radius=b.size.h>=78?22:16;
+  GPoint center=GPoint(b.size.w/2,b.size.h>=78?43:30);
+  GColor shaded=is_dark_theme()?GColorDarkGray:GColorOxfordBlue;
+  GColor lit=is_dark_theme()?GColorWhite:GColorLightGray;
+  GColor rim=is_dark_theme()?GColorLightGray:GColorDarkGray;
+  graphics_context_set_antialiased(ctx,true);
+  graphics_context_set_fill_color(ctx,shaded);
+  graphics_fill_circle(ctx,center,radius);
+  graphics_context_set_stroke_width(ctx,1);
+  graphics_context_set_stroke_color(ctx,lit);
+  int32_t cosine=moon_cosine(phase);
+  // For each horizontal chord of the lunar disk, the terminator is at
+  // +/- cos(phase angle)*halfwidth. Waxing lights the RIGHT, waning LEFT.
+  // This creates the proper curved terminator for crescents and gibbous moons.
+  for(int dy=-radius+1;dy<radius;dy++) {
+    int half=0;
+    while((half+1)*(half+1)+dy*dy<radius*radius)half++;
+    if(half<=0)continue;
+    int terminate=(int)((cosine*(int32_t)half)/TRIG_MAX_RATIO);
+    int left,right;
+    if(phase<500) {
+      left=center.x+terminate;
+      right=center.x+half;
+    } else {
+      left=center.x-half;
+      right=center.x-terminate;
+    }
+    if(right>left)graphics_draw_line(ctx,GPoint(left,center.y+dy),
+      GPoint(right,center.y+dy));
+  }
+  graphics_context_set_stroke_color(ctx,rim);
+  graphics_draw_circle(ctx,center,radius);
+  graphics_context_set_text_color(ctx,is_dark_theme()?GColorWhite:GColorBlack);
+  corner_text(ctx,"MOON",0,17,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+    GTextAlignmentCenter,b.size.w);
+  char text[12];
+  snprintf(text,sizeof(text),"%d%%",illumination);
+  corner_text(ctx,text,center.y+radius+1,18,
+    fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+    GTextAlignmentCenter,b.size.w);
+}
 static void corner_heart_graph(GContext *ctx,GRect b) {
   // Honor the 20/30/60 minute health setting, including when this complication
   // is moved to a corner other than the original bottom-right position.
@@ -202,6 +265,7 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
     corner_numeric(ctx,b,"WEATHER",value,extra);return;
   }
   if(metric==30||metric==31){corner_rings(ctx,b,metric==30);return;}
+  if(metric==76){corner_moon_image(ctx,b,now);return;}
   if(metric==81){corner_gauge(ctx,b,s_battery_level,GColorKellyGreen);}
   if(metric==33||metric==36||metric==73) {
     int pct=metric==33?(s_step_goal>0?100*corner_steps()/s_step_goal:0):
@@ -330,18 +394,14 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
   if(min>=0)snprintf(value,sizeof(value),"%dh %dm",min/60,min%60);
       else snprintf(value,sizeof(value),"Night");}break;
     case 74:case 75: {
-      // Approximate lunar age anchored to 2000-01-06 18:14 UTC new moon.
-      const int64_t cycle=2551443;
-      int64_t age=((int64_t)now-947182440LL)%cycle;
-  if(age<0)age+=cycle;
-      int phase=(int)((age*8+cycle/2)/cycle)%8;
-      int32_t angle=(int32_t)((age*TRIG_MAX_ANGLE)/cycle);
-      int illumination=(int)((50LL*(TRIG_MAX_RATIO-cos_lookup(angle)))/TRIG_MAX_RATIO);
-  if(metric==75)snprintf(value,sizeof(value),"~%d%%",illumination);
+      int phase=moon_cycle_thousandths(now);
+      int illumination=moon_illumination(phase);
+      if(metric==75)snprintf(value,sizeof(value),"~%d%%",illumination);
       else {
         const char *names[]={"New","Wax cres","First q","Wax gibb",
           "Full","Wan gibb","Last q","Wan cres"};
-        snprintf(value,sizeof(value),"%s",names[phase]);
+        int eighth=((phase*8+500)/1000)%8;
+        snprintf(value,sizeof(value),"%s",names[eighth]);
       }
       break;
     }
