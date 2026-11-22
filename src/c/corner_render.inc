@@ -153,13 +153,16 @@ static int moon_illumination(int phase) {
   int32_t cosine=moon_cosine(phase);
   return (int)((50LL*(TRIG_MAX_RATIO-cosine)+TRIG_MAX_RATIO/2)/TRIG_MAX_RATIO);
 }
-static void corner_moon_image(GContext *ctx,GRect b,time_t now) {
+static void corner_moon_image(GContext *ctx,GRect b,time_t now,bool show_percent) {
   int phase=moon_cycle_thousandths(now);
   int illumination=moon_illumination(phase);
-  // Upper corners are only 60px tall, so reserve 17px for the label and
-  // another 17px for the percentage without clipping either.
-  int radius=b.size.h>=78?22:13;
-  GPoint center=GPoint(b.size.w/2,b.size.h>=78?43:29);
+  // Image-only fills its corner; image + percent reserves the bottom 18px.
+  // Insets keep the rim clear of the edge at both 60px and 85-96px heights.
+  int radius=show_percent?(b.size.h-24)/2:(b.size.h-8)/2;
+  if(radius>44)radius=44;
+  if(radius>(b.size.w-8)/2)radius=(b.size.w-8)/2;
+  if(radius<9)radius=9;
+  GPoint center=GPoint(b.size.w/2,show_percent?radius+3:b.size.h/2);
   GColor shaded=is_dark_theme()?GColorDarkGray:GColorOxfordBlue;
   GColor lit=is_dark_theme()?GColorWhite:GColorLightGray;
   GColor rim=is_dark_theme()?GColorLightGray:GColorDarkGray;
@@ -169,9 +172,8 @@ static void corner_moon_image(GContext *ctx,GRect b,time_t now) {
   graphics_context_set_stroke_width(ctx,1);
   graphics_context_set_stroke_color(ctx,lit);
   int32_t cosine=moon_cosine(phase);
-  // For each horizontal chord of the lunar disk, the terminator is at
-  // +/- cos(phase angle)*halfwidth. Waxing lights the RIGHT, waning LEFT.
-  // This creates the proper curved terminator for crescents and gibbous moons.
+  // Waxing illuminates the right, waning the left. The nonlinear
+  // terminator approximates the visible curved boundary of lunar phases.
   for(int dy=-radius+1;dy<radius;dy++) {
     int half=0;
     while((half+1)*(half+1)+dy*dy<radius*radius)half++;
@@ -190,14 +192,14 @@ static void corner_moon_image(GContext *ctx,GRect b,time_t now) {
   }
   graphics_context_set_stroke_color(ctx,rim);
   graphics_draw_circle(ctx,center,radius);
-  graphics_context_set_text_color(ctx,is_dark_theme()?GColorWhite:GColorBlack);
-  corner_text(ctx,"MOON",0,17,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
-    GTextAlignmentCenter,b.size.w);
-  char text[12];
-  snprintf(text,sizeof(text),"%d%%",illumination);
-  corner_text(ctx,text,center.y+radius+1,18,
-    fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
-    GTextAlignmentCenter,b.size.w);
+  if(show_percent) {
+    char text[12];
+    snprintf(text,sizeof(text),"%d%%",illumination);
+    graphics_context_set_text_color(ctx,is_dark_theme()?GColorWhite:GColorBlack);
+    corner_text(ctx,text,b.size.h-19,18,
+      fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+      GTextAlignmentCenter,b.size.w);
+  }
 }
 static void corner_heart_graph(GContext *ctx,GRect b) {
   // Honor the 20/30/60 minute health setting, including when this complication
@@ -267,7 +269,7 @@ static void corner_draw_proc(Layer *layer,GContext *ctx) {
     corner_numeric(ctx,b,"WEATHER",value,extra);return;
   }
   if(metric==30||metric==31){corner_rings(ctx,b,metric==30);return;}
-  if(metric==76){corner_moon_image(ctx,b,now);return;}
+  if(metric==76||metric==77){corner_moon_image(ctx,b,now,metric==76);return;}
   if(metric==81){corner_gauge(ctx,b,s_battery_level,GColorKellyGreen);}
   if(metric==33||metric==36||metric==73) {
     int pct=metric==33?(s_step_goal>0?100*corner_steps()/s_step_goal:0):
