@@ -5,7 +5,11 @@ module.exports = function() {
   page.on(page.EVENTS.AFTER_BUILD,function() {
     function item(key){return page.getItemByMessageKey(key);}
     function hint(id){return page.getItemById(id);}
-    function show(control,visible){if(control){if(visible)control.show();else control.hide();}}
+    function show(control,visible){
+      if(!control)return;
+      if(visible&&typeof control.show==='function')control.show();
+      else if(!visible&&typeof control.hide==='function')control.hide();
+    }
     function on(source,fn){if(source)source.on('change',fn);}
     function enabled(x){return x===true||x===1||x==='1'||x==='true';}
     function value(key,defaultValue) {
