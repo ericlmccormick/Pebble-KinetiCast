@@ -68,12 +68,14 @@ function chosenMetric(settings,slot) {
   return Number(value);
 }
 function usesCalendar(settings) {
-  return Number(settings.CORNER_MODE||0)===1 &&
-    slots.some(function(slot){var n=chosenMetric(settings,slot);return n>=50&&n<=52;});
+  return Number(settings.CORNER_MODE||0)===4 ||
+    (Number(settings.CORNER_MODE||0)===1 &&
+    slots.some(function(slot){var n=chosenMetric(settings,slot);return n>=50&&n<=52;}));
 }
 function usesWeather(settings) {
-  return Number(settings.CORNER_MODE||0)===1 &&
-    slots.some(function(slot){var n=chosenMetric(settings,slot);return n>=1&&n<=28;});
+  var mode=Number(settings.CORNER_MODE||0);
+  return mode===2||mode===4||(mode===1 &&
+    slots.some(function(slot){var n=chosenMetric(settings,slot);return n>=1&&n<=28;}));
 }
 function usesPlugins(settings) {
   return Number(settings.CORNER_MODE||0)===1 &&
