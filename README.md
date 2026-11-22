@@ -2,6 +2,18 @@
 
 ## Modular complications (experimental feature branch)
 
+**Weather transport:** The active watchface subscribes to Weather+ on the phone.
+Only the fields used by currently selected weather/astronomy complications are
+transmitted, and only when their displayed values change. The phone tracks
+acknowledged values, retries failed sends, and supplies a complete snapshot when
+the watch starts/reconnects or settings change. The watch no longer requests
+weather every few minutes. Non-Weather+ providers are refreshed by the phone at
+the chosen update interval, with Bluetooth differences still suppressed.
+Weather+ retains a stalled-source recovery check; this is a phone-side fallback,
+not continuous watch polling. Rain-arrival countdowns use a timestamp on the
+watch rather than minute-by-minute Bluetooth pushes.
+
+
 This branch adds opt-in **Custom (four corners)** and Weather, Fitness and Agenda presets. The default **Classic** mode retains the original icon, combined temperature gauge, dual health rings with distance, heart-rate history, full-width alternate panels, date and time. Existing saved preferences are preserved.
 
 - Each corner offers Category and Reading selectors for Weather, Air Quality & Marine, Health & Fitness, Calendar, Date & Time, Sun & Moon, Battery & System, Plugin Data and Blank.
