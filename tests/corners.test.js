@@ -5,6 +5,8 @@ const catalog=require('../src/pkjs/corner-catalog');
 const weather=require('../src/pkjs/corner-weather');
 const plugins=require('../src/pkjs/corner-plugins');
 const manifest=require('../package.json');
+assert.equal(manifest.pebble.uuid,'f714c3de-9a38-4c4f-9486-2290af72e3b5','Preview must never overwrite the production watchface');
+assert.equal(manifest.pebble.displayName,'KinetiCast Preview');
 assert.equal(catalog.slots.length,4);
 assert.ok(Object.keys(catalog.groups).length>=9);
 assert.ok(catalog.groups.health.some(x=>x[0]===30&&/Original dual/.test(x[1])));
