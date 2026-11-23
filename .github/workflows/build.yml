@@ -31,6 +31,7 @@ jobs:
           node tests/weather-providers.test.js
           node tests/weather-release.test.js
           node tests/full-day-low.test.js
+          node tests/daily-extrema-hold.test.js
           node tests/weather-plus.test.js
           node tests/shake-tts.test.js
           node tests/calendar-next-event.test.js
