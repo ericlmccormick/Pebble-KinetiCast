@@ -15,17 +15,22 @@ const cache=new Map(),storage={
 };
 function create() {
  const context={Date:FakeDate,Math,JSON,Number,isFinite,localStorage:storage,
-   locationDateParts:()=>({day:'2026-11-22'})};
+   locationDateParts:()=>({day:'2026-11-22',hour:7})};
  vm.createContext(context);
  vm.runInContext(s.slice(start,end),context);
  return context;
 }
 let ctx=create();
 ctx.weatherRequestLocation={lat:21.4,lon:-157.8};
-let a={TEMP_HIGH:30,TEMP_LOW:19,_LOCAL_DAY:'2026-11-22'};
+const before={TEMP_HIGH:27,TEMP_LOW:16,_LOCAL_DAY:'2026-11-22',_LOCAL_HOUR:4};
+ctx.holdDailyExtrema(before);
+assert.equal(before.TEMP_LOW,16,'Before 6am daily forecast remains live');
+assert.equal(cache.size,0,'Do not pin a midnight or pre-dawn forecast');
+let a={TEMP_HIGH:30,TEMP_LOW:19,_LOCAL_DAY:'2026-11-22',_LOCAL_HOUR:7};
 ctx.holdDailyExtrema(a);
 assert.equal(a.TEMP_LOW,19);
 assert.ok(!('_LOCAL_DAY' in a),'Private date metadata never reaches Pebble message');
+assert.ok(!('_LOCAL_HOUR' in a),'Private local hour must not reach Pebble message');
 const saved=JSON.parse(cache.get('kineticast.dailyExtremaHold.v1'));
 assert.equal(saved.low,19);
 assert.equal(saved.high,30);
