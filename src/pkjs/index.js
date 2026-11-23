@@ -583,7 +583,10 @@ function weatherTravelDistanceKm(a,b,lat,lon){
 function holdDailyExtrema(dict){
   var place=weatherRequestLocation;
   var day=String(dict._LOCAL_DAY||locationDateParts(Date.now(),null).day);
-  delete dict._LOCAL_DAY; // Internal metadata must not become an AppMessage key.
+  var hour=typeof dict._LOCAL_HOUR==='number'&&isFinite(dict._LOCAL_HOUR)?
+    dict._LOCAL_HOUR:locationDateParts(Date.now(),null).hour;
+  delete dict._LOCAL_DAY;
+  delete dict._LOCAL_HOUR; // Internal metadata must not become an AppMessage key.
   if(!place||!isFinite(place.lat)||!isFinite(place.lon)||
      !/^\d{4}-\d{2}-\d{2}$/.test(day))return;
   var prev=null;
@@ -595,7 +598,8 @@ function holdDailyExtrema(dict){
   if(matches){
     dict.TEMP_HIGH=prev.high;
     dict.TEMP_LOW=prev.low;
-  } else if(typeof dict.TEMP_HIGH==='number'&&isFinite(dict.TEMP_HIGH)&&
+  } else if(typeof hour==='number'&&hour>=6&&hour<24&&
+            typeof dict.TEMP_HIGH==='number'&&isFinite(dict.TEMP_HIGH)&&
             typeof dict.TEMP_LOW==='number'&&isFinite(dict.TEMP_LOW)&&
             dict.TEMP_HIGH>=dict.TEMP_LOW){
     try{localStorage.setItem(DAILY_EXTREMA_HOLD_KEY,JSON.stringify({
@@ -709,6 +713,7 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'DAY3_ICON': getWmoIcon(json.daily.weather_code[3], 1)
       };
       dict._LOCAL_DAY=json.daily.time&&json.daily.time[0];
+      dict._LOCAL_HOUR=locationDateParts(Date.now(),json.timezone).hour;
       sendWeatherData(dict);
     }
   };
@@ -788,6 +793,7 @@ function sendWeatherWithFullDayExtrema(dict,lat,lon){
       expected.setUTCDate(expected.getUTCDate()+1);
     }
     dict._LOCAL_DAY=daily.time[0];
+    dict._LOCAL_HOUR=locationDateParts(Date.now(),json.timezone).hour;
     sendWeatherData(dict);
   };
   xhr.open('GET',url);
@@ -1001,6 +1007,9 @@ function fetchOpenWeather(lat, lon, units, settings) {
         'DAY3_ICON': json.daily[3].weather[0].icon
       };
       dict._LOCAL_DAY=localDateAtForecastLocation(json.timezone,json.timezone_offset);
+      dict._LOCAL_HOUR=json.timezone?
+        locationDateParts(Date.now(),json.timezone).hour:
+        Math.floor(((Date.now()/1000+(json.timezone_offset||0))%86400)/3600);
       sendWeatherData(dict);
     }
   };
