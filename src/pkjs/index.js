@@ -533,6 +533,52 @@ function weatherFinished(ok, detail) {
     getWeather(true);
   }, delay);
 }
+// Keep the first complete local-day forecast high/low for this place until
+// local midnight or a substantial relocation (40 km / approximately 25 mi).
+// Store native Celsius so changing the display temperature unit stays correct.
+var DAILY_EXTREMA_HOLD_KEY='kineticast.dailyExtremaHold.v1';
+var weatherRequestLocation=null;
+function weatherTravelDistanceKm(a,b,lat,lon){
+  var rad=Math.PI/180,dl=(lat-a)*rad,doLon=(lon-b)*rad;
+  var q=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a*rad)*
+    Math.cos(lat*rad)*Math.sin(doLon/2)*Math.sin(doLon/2);
+  return 12742*Math.asin(Math.min(1,Math.sqrt(q)));
+}
+function holdDailyExtrema(dict){
+  var place=weatherRequestLocation;
+  var day=String(dict._LOCAL_DAY||locationDateParts(Date.now(),null).day);
+  var hour=typeof dict._LOCAL_HOUR==='number'&&isFinite(dict._LOCAL_HOUR)?
+    dict._LOCAL_HOUR:locationDateParts(Date.now(),null).hour;
+  delete dict._LOCAL_DAY;
+  delete dict._LOCAL_HOUR; // Internal metadata must not become an AppMessage key.
+  if(!place||!isFinite(place.lat)||!isFinite(place.lon)||
+     !/^\d{4}-\d{2}-\d{2}$/.test(day))return;
+  var prev=null;
+  try{prev=JSON.parse(localStorage.getItem(DAILY_EXTREMA_HOLD_KEY)||'null');}
+  catch(e){}
+  var matches=prev&&prev.day===day&&isFinite(prev.lat)&&isFinite(prev.lon)&&
+    isFinite(prev.high)&&isFinite(prev.low)&&
+    weatherTravelDistanceKm(prev.lat,prev.lon,place.lat,place.lon)<40;
+  if(matches){
+    dict.TEMP_HIGH=prev.high;
+    dict.TEMP_LOW=prev.low;
+  } else if(typeof hour==='number'&&hour>=6&&hour<24&&
+            typeof dict.TEMP_HIGH==='number'&&isFinite(dict.TEMP_HIGH)&&
+            typeof dict.TEMP_LOW==='number'&&isFinite(dict.TEMP_LOW)&&
+            dict.TEMP_HIGH>=dict.TEMP_LOW){
+    try{localStorage.setItem(DAILY_EXTREMA_HOLD_KEY,JSON.stringify({
+      day:day,lat:place.lat,lon:place.lon,
+      high:dict.TEMP_HIGH,low:dict.TEMP_LOW,at:Date.now()
+    }));}catch(e){}
+  }
+}
+function localDateAtForecastLocation(timezone,offsetSeconds){
+  if(timezone)return locationDateParts(Date.now(),timezone).day;
+  if(typeof offsetSeconds==='number'&&isFinite(offsetSeconds))
+    return new Date(Date.now()+offsetSeconds*1000).toISOString().slice(0,10);
+  return locationDateParts(Date.now(),null).day;
+}
+
 function sendWeatherData(dict) {
   // Provider engines deliver Celsius. Convert exactly once, independently of distance.
   var settings = readSettings();
@@ -549,6 +595,7 @@ function sendWeatherData(dict) {
       weatherFinished(false, 'incomplete or invalid Celsius forecast'); return;
     }
   }
+  holdDailyExtrema(dict); // Lock Celsius before converting to F/C/K/R.
   for (var j = 0; j < temperatureKeys.length; j++) {
     var key = temperatureKeys[j];
     dict[key] = convertCelsius(dict[key], unit);
@@ -629,6 +676,8 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'DAY3_LOW': json.daily.temperature_2m_min[3],
         'DAY3_ICON': getWmoIcon(json.daily.weather_code[3], 1)
       };
+      dict._LOCAL_DAY=json.daily.time&&json.daily.time[0];
+      dict._LOCAL_HOUR=locationDateParts(Date.now(),json.timezone).hour;
       sendWeatherData(dict);
     }
   };
@@ -675,6 +724,45 @@ function completeDayArray(map, today) {
     current = d.toISOString().slice(0, 10);
   }
   return result;
+}
+
+// NWS/MET Norway forecastHourly starts at the current time; its minimum
+// excludes earlier hours and rises through the day. Use an explicit forecast
+// of the complete local 00:00-24:00 calendar day for daily high/low values.
+function sendWeatherWithFullDayExtrema(dict,lat,lon){
+  var url='https://api.open-meteo.com/v1/forecast?latitude='+lat+
+    '&longitude='+lon+
+    '&daily=temperature_2m_max,temperature_2m_min'+
+    '&forecast_days=4&timezone=auto&temperature_unit=celsius';
+  var xhr=weatherXHR();
+  xhr.onload=function(){
+    var json=JSON.parse(this.responseText);
+    var daily=json&&json.daily;
+    if(!daily||!daily.time||!daily.temperature_2m_max||
+       !daily.temperature_2m_min||daily.time.length<4){
+      weatherFinished(false,'full local-day extrema unavailable');return;
+    }
+    var today=locationDateParts(Date.now(),json.timezone).day;
+    var expected=new Date(today+'T12:00:00Z');
+    var keys=['TEMP','DAY1','DAY2','DAY3'];
+    for(var i=0;i<4;i++){
+      var key=expected.toISOString().slice(0,10);
+      var hi=daily.temperature_2m_max[i],lo=daily.temperature_2m_min[i];
+      if(daily.time[i]!==key||typeof hi!=='number'||typeof lo!=='number'||
+          !isFinite(hi)||!isFinite(lo)||hi<lo||hi>75||lo< -120){
+        weatherFinished(false,'full local-day extrema missing or misaligned');return;
+      }
+      dict[keys[i]+'_HIGH']=hi;
+      dict[keys[i]+'_LOW']=lo;
+      expected.setUTCDate(expected.getUTCDate()+1);
+    }
+    dict._LOCAL_DAY=daily.time[0];
+    dict._LOCAL_HOUR=locationDateParts(Date.now(),json.timezone).hour;
+    sendWeatherData(dict);
+  };
+  xhr.open('GET',url);
+  guardWeatherLoad(xhr);
+  xhr.send();
 }
 
 function fetchMetNo(lat, lon, units, settings) {
@@ -748,7 +836,7 @@ function fetchMetNo(lat, lon, units, settings) {
         'DAY3_ICON': days[3].icon
       };
       
-      sendWeatherData(dict);
+      sendWeatherWithFullDayExtrema(dict,lat,lon);
     }
   };
   guardWeatherLoad(xhr);
@@ -841,7 +929,7 @@ function fetchNWS(lat, lon, units, settings) {
             'DAY2_HIGH': days[2].max, 'DAY2_LOW': days[2].min, 'DAY2_ICON': days[2].icon,
             'DAY3_HIGH': days[3].max, 'DAY3_LOW': days[3].min, 'DAY3_ICON': days[3].icon
           };
-          sendWeatherData(dict);
+          sendWeatherWithFullDayExtrema(dict,lat,lon);
         });
       });
     });
@@ -882,6 +970,10 @@ function fetchOpenWeather(lat, lon, units, settings) {
         'DAY3_LOW': json.daily[3].temp.min,
         'DAY3_ICON': json.daily[3].weather[0].icon
       };
+      dict._LOCAL_DAY=localDateAtForecastLocation(json.timezone,json.timezone_offset);
+      dict._LOCAL_HOUR=json.timezone?
+        locationDateParts(Date.now(),json.timezone).hour:
+        Math.floor(((Date.now()/1000+(json.timezone_offset||0))%86400)/3600);
       sendWeatherData(dict);
     }
   };
@@ -906,6 +998,7 @@ function fetchNamedProvider(provider, lat, lon, units, settings) {
   }
 }
 function executeProviderFetch(lat, lon, units, settings) {
+  weatherRequestLocation={lat:lat,lon:lon};
   var provider = settings.WEATHER_PROVIDER || 'auto';
   if (provider === 'openweather') provider = 'openweathermap';
   if (provider === 'auto') {
