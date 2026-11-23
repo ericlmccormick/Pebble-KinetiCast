@@ -1,5 +1,10 @@
 var Clay = require('pebble-clay');
 var customClay = require('./custom-clay');
+var cornerCatalog = require('./corner-catalog');
+var cornerPlugins = require('./corner-plugins');
+var cornerWeather = require('./corner-weather');
+var weatherPush = require('./weather-push');
+var weatherDeliveryFactory = require('./weather-delivery');
 
 // ==============================================================================
 // SECTION: CLAY CONFIGURATION (SETTINGS MENU)
@@ -17,19 +22,9 @@ var clayConfig = [
       ]}
   ]},
   { "type": "section", "items": [
-    { "type": "heading", "defaultValue": "Watchface" },
-    { "type": "select", "messageKey": "DEFAULT_VIEW", "label": "Bottom Panel",
-      "defaultValue": "0", "options": [
-        { "label": "Health", "value": "0" },
-        { "label": "3-Day Weather", "value": "1" },
-        { "label": "Next Event", "value": "2" }
-      ] }
-  ] },
-  { "type": "section", "items": [
-    { "type": "heading", "defaultValue": "Weather" },
-    { "type": "toggle", "messageKey": "WEATHER_UPDATES_ENABLED",
-      "label": "Update Weather", "defaultValue": true,
-      "description": "Off keeps the last forecast." },
+    { "type": "heading", "id":"weather-section-heading", "defaultValue": "Weather" },
+    { "type":"text", "id":"weather-auto-note",
+      "defaultValue":"Weather turns on automatically when a corner, center, or wrist preview uses it. Only displayed changes are pushed from the phone." },
     { "type": "select", "messageKey": "WEATHER_PROVIDER", "label": "Source",
       "defaultValue": "weatherplus", "options": [
         { "label": "Weather+ (shared plugin)", "value": "weatherplus" },
@@ -61,7 +56,7 @@ var clayConfig = [
       "defaultValue": 30, "min": 10, "max": 120, "step": 5 }
   ] },
   { "type": "section", "items": [
-    { "type": "heading", "defaultValue": "Calendar" },
+    { "type": "heading", "id":"calendar-section-heading", "defaultValue": "Calendar" },
     { "type": "select", "messageKey": "CALENDAR_FILTER", "label": "Calendar",
       "defaultValue": "__all__", "options": [
         { "label": "All Calendars", "value": "__all__" }
@@ -85,7 +80,7 @@ var clayConfig = [
     { "type": "heading", "defaultValue": "Wrist Gestures" },
     { "type": "select", "messageKey": "SHAKE_ACTION", "label": "On Wrist Flick",
       "defaultValue": "0", "options": [
-        { "label": "Show Other Panel (7s)", "value": "0" },
+        { "label": "Preview 3-Day Weather (7s)", "value": "0" },
         { "label": "Show Next Event (7s)", "value": "3" },
         { "label": "Speak Time (TTS)", "value": "1" },
         { "label": "Test Shake Strength", "value": "4" },
@@ -110,7 +105,7 @@ var clayConfig = [
       "defaultValue": "Spoken time requires Universal TTS and a speaker." }
   ] },
   { "type": "section", "items": [
-    { "type": "heading", "defaultValue": "Health & Sleep" },
+    { "type": "heading", "id":"health-section-heading", "defaultValue": "Health & Sleep" },
     { "type": "select", "messageKey": "DISTANCE_UNIT", "label": "Walking Distance",
       "defaultValue": "mi", "options": [
         { "label": "Miles", "value": "mi" },
@@ -142,6 +137,47 @@ var clayConfig = [
   ] },
   { "type": "submit", "defaultValue": "Save Settings" }
 ];
+
+
+// One configurable four-corner layout; the original arrangement is the default.
+var cornerItems = [
+  {type:'heading',defaultValue:'Complications'},
+  {type:'text',id:'layout-hint',defaultValue:
+   'Choose what each corner and the center display. Defaults match the original KinetiCast.'},
+  {type:'select',messageKey:'CENTER_VIEW',label:'Center',
+    defaultValue:'0',options:[
+      {label:'Time + date (original)',value:'0'},
+      {label:'Time only',value:'1'},
+      {label:'Next event',value:'2'},
+      {label:'3-day weather',value:'3'}
+    ]}
+];
+cornerCatalog.slots.forEach(function(slot){
+  var title={TL:'Top Left',TR:'Top Right',BL:'Bottom Left',BR:'Bottom Right'}[slot];
+  var base='CORNER_'+slot+'_';
+  cornerItems.push({type:'heading',id:'corner-title-'+slot,defaultValue:title,size:5});
+  cornerItems.push({type:'select',messageKey:base+'GROUP',label:'Category',
+    defaultValue:cornerCatalog.defaults[slot].group,options:cornerCatalog.groupOptions()});
+  Object.keys(cornerCatalog.groups).forEach(function(group){
+    cornerItems.push({type:'select',messageKey:base+group.toUpperCase(),
+      label:'Reading',defaultValue:String(group===cornerCatalog.defaults[slot].group ?
+        cornerCatalog.defaults[slot].metric:cornerCatalog.groups[group][0][0]),
+      options:cornerCatalog.metricOptions(group)});
+  });
+  cornerItems.push({type:'select',messageKey:base+'PLUGIN_SPEC',
+    label:'Installed plugin reading',defaultValue:'',options:[
+      {label:'Choose a published plugin field',value:''}]});
+  cornerItems.push({type:'slider',messageKey:base+'INDEX',
+    label:'Plugin instance (0 = first)',defaultValue:0,min:0,max:20,step:1});
+});
+cornerItems.push({type:'select',messageKey:'BATTERY_BAR_STYLE',label:'Bottom Battery Bar',
+  defaultValue:'1',options:[
+    {label:'Off',value:'0'}, {label:'Slim (original)',value:'1'},
+    {label:'Enhanced',value:'2'}, {label:'Bar + Percentage',value:'3'}
+  ]});
+clayConfig.splice(2,0,{type:'section',items:cornerItems});
+var sourceSections=clayConfig.slice(4,7);
+clayConfig.splice(4,3,sourceSections[2],sourceSections[0],sourceSections[1]);
 
 var clay = new Clay(clayConfig, customClay, { autoHandleEvents: false });
 var calendarSubscription = null;
@@ -220,7 +256,7 @@ function nextCalendarEvent() {
 }
 function calendarFeaturesEnabled(settings) {
   settings = settings || readSettings();
-  return Number(settings.DEFAULT_VIEW || 0) === 2 ||
+  return cornerCatalog.usesCalendar(settings) ||
     Number(settings.SHAKE_ACTION || 0) === 3 ||
     settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false);
 }
@@ -533,6 +569,52 @@ function weatherFinished(ok, detail) {
     getWeather(true);
   }, delay);
 }
+// Keep the first complete local-day forecast high/low for this place until
+// local midnight or a substantial relocation (40 km / approximately 25 mi).
+// Store native Celsius so changing the display temperature unit stays correct.
+var DAILY_EXTREMA_HOLD_KEY='kineticast.dailyExtremaHold.v1';
+var weatherRequestLocation=null;
+function weatherTravelDistanceKm(a,b,lat,lon){
+  var rad=Math.PI/180,dl=(lat-a)*rad,doLon=(lon-b)*rad;
+  var q=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a*rad)*
+    Math.cos(lat*rad)*Math.sin(doLon/2)*Math.sin(doLon/2);
+  return 12742*Math.asin(Math.min(1,Math.sqrt(q)));
+}
+function holdDailyExtrema(dict){
+  var place=weatherRequestLocation;
+  var day=String(dict._LOCAL_DAY||locationDateParts(Date.now(),null).day);
+  var hour=typeof dict._LOCAL_HOUR==='number'&&isFinite(dict._LOCAL_HOUR)?
+    dict._LOCAL_HOUR:locationDateParts(Date.now(),null).hour;
+  delete dict._LOCAL_DAY;
+  delete dict._LOCAL_HOUR; // Internal metadata must not become an AppMessage key.
+  if(!place||!isFinite(place.lat)||!isFinite(place.lon)||
+     !/^\d{4}-\d{2}-\d{2}$/.test(day))return;
+  var prev=null;
+  try{prev=JSON.parse(localStorage.getItem(DAILY_EXTREMA_HOLD_KEY)||'null');}
+  catch(e){}
+  var matches=prev&&prev.day===day&&isFinite(prev.lat)&&isFinite(prev.lon)&&
+    isFinite(prev.high)&&isFinite(prev.low)&&
+    weatherTravelDistanceKm(prev.lat,prev.lon,place.lat,place.lon)<40;
+  if(matches){
+    dict.TEMP_HIGH=prev.high;
+    dict.TEMP_LOW=prev.low;
+  } else if(typeof hour==='number'&&hour>=6&&hour<24&&
+            typeof dict.TEMP_HIGH==='number'&&isFinite(dict.TEMP_HIGH)&&
+            typeof dict.TEMP_LOW==='number'&&isFinite(dict.TEMP_LOW)&&
+            dict.TEMP_HIGH>=dict.TEMP_LOW){
+    try{localStorage.setItem(DAILY_EXTREMA_HOLD_KEY,JSON.stringify({
+      day:day,lat:place.lat,lon:place.lon,
+      high:dict.TEMP_HIGH,low:dict.TEMP_LOW,at:Date.now()
+    }));}catch(e){}
+  }
+}
+function localDateAtForecastLocation(timezone,offsetSeconds){
+  if(timezone)return locationDateParts(Date.now(),timezone).day;
+  if(typeof offsetSeconds==='number'&&isFinite(offsetSeconds))
+    return new Date(Date.now()+offsetSeconds*1000).toISOString().slice(0,10);
+  return locationDateParts(Date.now(),null).day;
+}
+
 function sendWeatherData(dict) {
   // Provider engines deliver Celsius. Convert exactly once, independently of distance.
   var settings = readSettings();
@@ -549,6 +631,7 @@ function sendWeatherData(dict) {
       weatherFinished(false, 'incomplete or invalid Celsius forecast'); return;
     }
   }
+  holdDailyExtrema(dict); // Lock Celsius before converting to F/C/K/R.
   for (var j = 0; j < temperatureKeys.length; j++) {
     var key = temperatureKeys[j];
     dict[key] = convertCelsius(dict[key], unit);
@@ -562,11 +645,10 @@ function sendWeatherData(dict) {
       !isFinite(dict.DAY3_HIGH) || !isFinite(dict.DAY3_LOW)) {
     weatherFinished(false, 'invalid provider temperature'); return;
   }
-  Pebble.sendAppMessage(dict, function() {
-    activityCounters.weatherMessages++;
-    if (activeWeatherGeneration(gen)) weatherFinished(true);
-  }, function() {
-    if (activeWeatherGeneration(gen)) weatherFinished(false, 'AppMessage delivery failed');
+  queueSelectedWeather(dict,settings,false,function(success) {
+    if (!activeWeatherGeneration(gen)) return;
+    if (success) weatherFinished(true);
+    else weatherFinished(false, 'AppMessage delivery failed');
   });
 }
 function guardWeatherLoad(xhr) {
@@ -614,7 +696,8 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'SHOW_SLEEP': settingEnabled(settings.SHOW_SLEEP, true) ? 1 : 0,
         'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
         'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
-    'HEALTH_LIVE_UPDATES': settingEnabled(settings.HEALTH_LIVE_UPDATES,true) ? 1 : 0,
+    'HEALTH_LIVE_UPDATES': (cornerCatalog.usesHealth(settings) &&
+      settingEnabled(settings.HEALTH_LIVE_UPDATES,true)) ? 1 : 0,
     'WEATHER_UPDATES_ENABLED': weatherUpdatesEnabled(settings) ? 1 : 0,
     'GESTURE_POWER_MODE': Number(settings.GESTURE_POWER_MODE||0) === 1 ? 1 : 0,
     'PERSISTENT_CALENDAR_ENABLE': settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false) ? 1 : 0,
@@ -629,6 +712,8 @@ function fetchOpenMeteo(lat, lon, units, settings) {
         'DAY3_LOW': json.daily.temperature_2m_min[3],
         'DAY3_ICON': getWmoIcon(json.daily.weather_code[3], 1)
       };
+      dict._LOCAL_DAY=json.daily.time&&json.daily.time[0];
+      dict._LOCAL_HOUR=locationDateParts(Date.now(),json.timezone).hour;
       sendWeatherData(dict);
     }
   };
@@ -675,6 +760,45 @@ function completeDayArray(map, today) {
     current = d.toISOString().slice(0, 10);
   }
   return result;
+}
+
+// NWS/MET Norway forecastHourly starts at the current time; its minimum
+// excludes earlier hours and rises through the day. Use an explicit forecast
+// of the complete local 00:00-24:00 calendar day for daily high/low values.
+function sendWeatherWithFullDayExtrema(dict,lat,lon){
+  var url='https://api.open-meteo.com/v1/forecast?latitude='+lat+
+    '&longitude='+lon+
+    '&daily=temperature_2m_max,temperature_2m_min'+
+    '&forecast_days=4&timezone=auto&temperature_unit=celsius';
+  var xhr=weatherXHR();
+  xhr.onload=function(){
+    var json=JSON.parse(this.responseText);
+    var daily=json&&json.daily;
+    if(!daily||!daily.time||!daily.temperature_2m_max||
+       !daily.temperature_2m_min||daily.time.length<4){
+      weatherFinished(false,'full local-day extrema unavailable');return;
+    }
+    var today=locationDateParts(Date.now(),json.timezone).day;
+    var expected=new Date(today+'T12:00:00Z');
+    var keys=['TEMP','DAY1','DAY2','DAY3'];
+    for(var i=0;i<4;i++){
+      var key=expected.toISOString().slice(0,10);
+      var hi=daily.temperature_2m_max[i],lo=daily.temperature_2m_min[i];
+      if(daily.time[i]!==key||typeof hi!=='number'||typeof lo!=='number'||
+          !isFinite(hi)||!isFinite(lo)||hi<lo||hi>75||lo< -120){
+        weatherFinished(false,'full local-day extrema missing or misaligned');return;
+      }
+      dict[keys[i]+'_HIGH']=hi;
+      dict[keys[i]+'_LOW']=lo;
+      expected.setUTCDate(expected.getUTCDate()+1);
+    }
+    dict._LOCAL_DAY=daily.time[0];
+    dict._LOCAL_HOUR=locationDateParts(Date.now(),json.timezone).hour;
+    sendWeatherData(dict);
+  };
+  xhr.open('GET',url);
+  guardWeatherLoad(xhr);
+  xhr.send();
 }
 
 function fetchMetNo(lat, lon, units, settings) {
@@ -748,7 +872,7 @@ function fetchMetNo(lat, lon, units, settings) {
         'DAY3_ICON': days[3].icon
       };
       
-      sendWeatherData(dict);
+      sendWeatherWithFullDayExtrema(dict,lat,lon);
     }
   };
   guardWeatherLoad(xhr);
@@ -841,7 +965,7 @@ function fetchNWS(lat, lon, units, settings) {
             'DAY2_HIGH': days[2].max, 'DAY2_LOW': days[2].min, 'DAY2_ICON': days[2].icon,
             'DAY3_HIGH': days[3].max, 'DAY3_LOW': days[3].min, 'DAY3_ICON': days[3].icon
           };
-          sendWeatherData(dict);
+          sendWeatherWithFullDayExtrema(dict,lat,lon);
         });
       });
     });
@@ -882,6 +1006,10 @@ function fetchOpenWeather(lat, lon, units, settings) {
         'DAY3_LOW': json.daily[3].temp.min,
         'DAY3_ICON': json.daily[3].weather[0].icon
       };
+      dict._LOCAL_DAY=localDateAtForecastLocation(json.timezone,json.timezone_offset);
+      dict._LOCAL_HOUR=json.timezone?
+        locationDateParts(Date.now(),json.timezone).hour:
+        Math.floor(((Date.now()/1000+(json.timezone_offset||0))%86400)/3600);
       sendWeatherData(dict);
     }
   };
@@ -906,6 +1034,7 @@ function fetchNamedProvider(provider, lat, lon, units, settings) {
   }
 }
 function executeProviderFetch(lat, lon, units, settings) {
+  weatherRequestLocation={lat:lat,lon:lon};
   var provider = settings.WEATHER_PROVIDER || 'auto';
   if (provider === 'openweather') provider = 'openweathermap';
   if (provider === 'auto') {
@@ -929,8 +1058,56 @@ var weatherPlusTimer = null;
 var weatherPlusLastData = 0;
 var weatherPlusStarted = 0;
 var weatherPlusLastPayload = null;
+var weatherPlusCachedPacket = null;
+var weatherRecoveryTimer = null;
+var weatherDelivery = weatherDeliveryFactory.create(Pebble,weatherPush,{
+  onError:function(e){console.log('KinetiCast weather push error: '+String(e));}
+});
+// Only deliver fields used by the visible complications, with acknowledgements.
+// A snapshot can also be sent on demand when the watch reconnects.
+function queueSelectedWeather(packet,settings,force,done) {
+  var keys=weatherPush.watchedKeys(settings,cornerCatalog);
+  weatherDelivery.submit(packet,keys,force,function(success,sent){
+    if(success&&sent)activityCounters.weatherMessages++;
+    if(done)done(success,sent);
+  });
+}
+function forceWeatherSnapshot() {
+  var settings=readSettings();
+  if(!weatherUpdatesEnabled(settings)||!weatherPush.requiresWeather(settings,cornerCatalog))return;
+  // A fresh snapshot must be sent even when the displayed numbers are unchanged.
+  weatherDelivery.reset();
+  weatherPlusLastPayload=null;
+  if(chosenWeatherSource(settings)==='weatherplus' && weatherPlusCachedPacket &&
+     weatherPlusLastData>0 && Date.now()-weatherPlusLastData<90*60000){
+    var dict=weatherPlusCachedPacket;
+    var signature=JSON.stringify(weatherPush.pick(dict,weatherPush.watchedKeys(settings,cornerCatalog)));
+    queueSelectedWeather(dict,settings,true,function(ok){
+      if(ok)weatherPlusLastPayload=signature;
+    });
+  } else if(chosenWeatherSource(settings)==='weatherplus') {
+    if(!weatherPlusSubscription) startWeatherPlus();
+    else getWeather(true,true); // stale/missing subscription: phone-side recovery
+  } else getWeather(true);
+}
+function configureWeatherRecovery() {
+  if(weatherRecoveryTimer)clearInterval(weatherRecoveryTimer);
+  weatherRecoveryTimer=null;
+  var current=readSettings();
+  if(!weatherUpdatesEnabled(current)||!weatherPush.requiresWeather(current,cornerCatalog))return;
+  weatherRecoveryTimer=setInterval(function() {
+    var settings=readSettings();
+    if(!weatherUpdatesEnabled(settings)||!weatherPush.requiresWeather(settings,cornerCatalog))return;
+    if(chosenWeatherSource(settings)==='weatherplus'){
+      // Only fall back to direct provider polling after the subscription stalls.
+      if(weatherPlusLastData && Date.now()-weatherPlusLastData<90*60000)return;
+      getWeather(true,true);
+    } else if(!lastWeatherSuccess ||
+        Date.now()-lastWeatherSuccess>=weatherIntervalMs(settings)) getWeather(true);
+  },5*60000);
+}
 function weatherUpdatesEnabled(settings) {
-  return settingEnabled((settings || readSettings()).WEATHER_UPDATES_ENABLED,true);
+  return weatherPush.requiresWeather(settings || readSettings(),cornerCatalog);
 }
 function chosenWeatherSource(settings) {
   return settings.WEATHER_PROVIDER || (settings.API_KEY ? 'openweathermap' : 'weatherplus');
@@ -985,7 +1162,9 @@ function weatherPlusIcon(code, condition, day) {
   return '01' + (day ? 'd' : 'n');
 }
 function applyWeatherPlus(data) {
-  if (!weatherUpdatesEnabled() || chosenWeatherSource(readSettings()) !== 'weatherplus') return;
+  var settings=readSettings();
+  if(!weatherUpdatesEnabled(settings)||chosenWeatherSource(settings)!=='weatherplus' ||
+     !weatherPush.requiresWeather(settings,cornerCatalog))return;
   var instances = data && data.instances || [];
   var props = instances[0] && instances[0].properties;
   if (!props) { console.log('KinetiCast: Weather+ missing properties'); return; }
@@ -1042,30 +1221,31 @@ function applyWeatherPlus(data) {
   };
   var uv = weatherPlusNum(props,'uv_index');
   if (uv !== null && uv >= 0 && uv < 40) dict.UV_INDEX = Math.round(uv);
-  // Shared plugin already caches forecasts. Avoid transmitting identical
-  // payloads repeatedly; resync after restart/reconnect through a fresh setup.
-  var signature = JSON.stringify(dict);
-  if (signature === weatherPlusLastPayload) {
-    weatherPlusLastData = Date.now();
-    return;
-  }
-  Pebble.sendAppMessage(dict,function() {
-    activityCounters.weatherMessages++;
-    weatherPlusLastPayload = signature;
-    weatherPlusLastData = Date.now();
-    lastWeatherSuccess = weatherPlusLastData;
-  },function() { console.log('KinetiCast: Weather+ delivery failed'); });
+  // Only selected fields matter for Bluetooth delivery. Other Weather+ changes
+  // still update the local phone cache without waking up the watch.
+  cornerWeather.augment(dict,props,now);
+  weatherPlusCachedPacket=dict;
+  weatherPlusLastData=Date.now();
+  lastWeatherSuccess=weatherPlusLastData;
+  var signature=JSON.stringify(weatherPush.pick(dict,weatherPush.watchedKeys(settings,cornerCatalog)));
+  if (signature === weatherPlusLastPayload) return;
+  queueSelectedWeather(dict,settings,false,function(success){
+    if(success)weatherPlusLastPayload=signature;
+    else console.log('KinetiCast: Weather+ push retry scheduled');
+  });
 }
 function stopWeatherPlus() {
   if (weatherPlusSubscription && typeof weatherPlusSubscription.unsubscribe === 'function')
     weatherPlusSubscription.unsubscribe();
   weatherPlusSubscription = null;
+  weatherPlusCachedPacket = null;
   if (weatherPlusTimer) clearTimeout(weatherPlusTimer);
   weatherPlusTimer = null;
 }
 function startWeatherPlus() {
   stopWeatherPlus();
-  if (!weatherUpdatesEnabled()) return;
+  if (!weatherUpdatesEnabled() ||
+      !weatherPush.requiresWeather(readSettings(),cornerCatalog)) return;
   weatherPlusLastData = 0;
   weatherPlusLastPayload = null;
   weatherPlusStarted = Date.now();
@@ -1074,11 +1254,10 @@ function startWeatherPlus() {
     getWeather(true,true); return;
   }
   try {
+    var requested=weatherPush.properties(readSettings(),cornerCatalog);
     weatherPlusSubscription = Pebble.subscribeToSource({
       category:'weather',item:'location',plugin:WEATHER_PLUS_UUID,
-      properties:['temperature','uv_index','condition_code','hourly_is_day',
-        'hourly_weather_code','daily_high','daily_low','daily_weather_code',
-        'utc_offset','updated_at'],
+      properties:requested,
       onData:applyWeatherPlus,
       onError:function(err) {
         console.log('KinetiCast: Weather+ source error: '+JSON.stringify(err));
@@ -1097,7 +1276,8 @@ function startWeatherPlus() {
 
 function getWeather() {
   var settings = syncLegacyPreferences(readSettings());
-  if (!weatherUpdatesEnabled(settings)) return;
+  if (!weatherUpdatesEnabled(settings) ||
+      !weatherPush.requiresWeather(settings,cornerCatalog))return;
   var units = 'metric'; // Weather providers always speak Celsius internally.
   var provider = chosenWeatherSource(settings);
   // A healthy Weather+ subscription owns the forecast; do not poll twice.
@@ -1171,7 +1351,9 @@ Pebble.addEventListener('ready', function() {
   updateSolarTheme();
   if (weatherUpdatesEnabled() && chosenWeatherSource(readSettings()) === 'weatherplus') startWeatherPlus();
   else if (weatherUpdatesEnabled()) getWeather();
+  configureWeatherRecovery();
   if (calendarFeaturesEnabled()) startCalendarSource();
+  cornerPlugins.apply(Pebble,readSettings(),cornerCatalog);
 });
 
 Pebble.addEventListener('appmessage', function(e) {
@@ -1190,7 +1372,7 @@ Pebble.addEventListener('appmessage', function(e) {
     if (calendarFeaturesEnabled()) sendNextCalendarEvent(false);
     return;
   }
-  if (e.payload.REQUEST_WEATHER !== undefined && weatherUpdatesEnabled()) getWeather();
+  if (e.payload.REQUEST_WEATHER !== undefined && weatherUpdatesEnabled()) forceWeatherSnapshot();
 });
 
 Pebble.addEventListener('showConfiguration', function(e) {
@@ -1206,6 +1388,8 @@ Pebble.addEventListener('showConfiguration', function(e) {
   }
   
   updateCalendarSelectOptions();
+  cornerPlugins.populatePluginOptions(Pebble,clayConfig,settings);
+  clay=new Clay(clayConfig,customClay,{autoHandleEvents:false});
   Pebble.openURL(clay.generateUrl());
 });
 
@@ -1247,39 +1431,59 @@ Pebble.addEventListener('webviewclosed', function(e) {
     'DISTANCE_UNIT': desiredDistanceUnit(settings) === 'km' ? 1 : 0,
     'TEMP_UNIT': temperatureUnitId(desiredTempUnit(settings)),
     'UPDATE_FREQ': parseInt(settings.UPDATE_FREQ) || 30,
-    'SHOW_SLEEP': (settings.SHOW_SLEEP == true || settings.SHOW_SLEEP === "true" || settings.SHOW_SLEEP == 1) ? 1 : 0,
+    'SHOW_SLEEP': (cornerCatalog.usesHealth(settings) &&
+      settingEnabled(settings.SHOW_SLEEP,true)) ? 1 : 0,
     'THEME_MODE': parseInt(settings.THEME_MODE) || 0,
     'DEFAULT_VIEW': parseInt(settings.DEFAULT_VIEW) || 0,
     'PERSISTENT_CALENDAR_ENABLE': settingEnabled(settings.PERSISTENT_CALENDAR_ENABLE, false) ? 1 : 0,
     'PERSISTENT_CALENDAR_MINUTES': persistentCalendarMinutes(settings.PERSISTENT_CALENDAR_MINUTES),
     'WEATHER_UPDATES_ENABLED': weatherUpdatesEnabled(settings) ? 1 : 0,
-    'HEALTH_LIVE_UPDATES': settingEnabled(settings.HEALTH_LIVE_UPDATES, true) ? 1 : 0,
+    'HEALTH_LIVE_UPDATES': (cornerCatalog.usesHealth(settings) &&
+      settingEnabled(settings.HEALTH_LIVE_UPDATES,true)) ? 1 : 0,
     'GESTURE_POWER_MODE': Number(settings.GESTURE_POWER_MODE || 0) === 1 ? 1 : 0,
     'SHAKE_ACTION': parseInt(settings.SHAKE_ACTION, 10) || 0,
     'SHAKE_SENSITIVITY': normalizeShakeThreshold(settings.SHAKE_SENSITIVITY),
     'SHAKE_LENGTH': settings.SHAKE_LENGTH === undefined ? 2 : parseInt(settings.SHAKE_LENGTH, 10),
     'HR_GRAPH_WINDOW': parseInt(settings.HR_GRAPH_WINDOW, 10) || 20,
-    'SLEEP_BRIEF_SECONDS': parseInt(settings.SLEEP_BRIEF_SECONDS, 10) || 0
+    'SLEEP_BRIEF_SECONDS': parseInt(settings.SLEEP_BRIEF_SECONDS, 10) || 0,
+    'CORNER_MODE': 1,
+    'CENTER_VIEW': cornerCatalog.centerView(settings),
+    'BATTERY_BAR_STYLE': Number(settings.BATTERY_BAR_STYLE||1)
   };
+  cornerCatalog.slots.forEach(function(slot) {
+    appDict['CORNER_'+slot] = cornerCatalog.chosenMetric(settings,slot);
+  });
   
   Pebble.sendAppMessage(appDict, function() {
     // The watch must receive the persistent-calendar controls before a next
     // event is delivered, otherwise the takeover can be evaluated as disabled.
     syncCalendarConfiguration(previousSettings, settings);
+    cornerPlugins.apply(Pebble,settings,cornerCatalog);
+    if (cornerCatalog.usesCalendar(settings)) startCalendarSource();
     // Reopen shared weather only when provider or display units actually change.
     var weatherChanged = weatherUpdatesEnabled(previousSettings) !== weatherUpdatesEnabled(settings) ||
       chosenWeatherSource(previousSettings) !== chosenWeatherSource(settings) ||
+      cornerCatalog.centerView(previousSettings)!==cornerCatalog.centerView(settings) ||
+      JSON.stringify(weatherPush.watchedKeys(previousSettings,cornerCatalog)) !==
+        JSON.stringify(weatherPush.watchedKeys(settings,cornerCatalog)) ||
       desiredTempUnit(previousSettings) !== desiredTempUnit(settings) ||
       desiredDistanceUnit(previousSettings) !== desiredDistanceUnit(settings) ||
       String(previousSettings.MANUAL_LOCATION||'') !== String(settings.MANUAL_LOCATION||'') ||
       settingEnabled(previousSettings.USE_GPS,true) !== settingEnabled(settings.USE_GPS,true);
-    if (weatherChanged) {
+    if (weatherChanged || JSON.stringify(cornerCatalog.slots.map(function(slot){
+      return cornerCatalog.chosenMetric(settings,slot);
+    })) !== JSON.stringify(cornerCatalog.slots.map(function(slot){
+      return cornerCatalog.chosenMetric(previousSettings,slot);
+    }))) {
+      weatherPlusLastPayload = null;
       lastWeatherSuccess = 0;
+      weatherDelivery.reset();
       stopWeatherPlus();
       if (weatherUpdatesEnabled(settings)) {
         if (chosenWeatherSource(settings) === 'weatherplus') startWeatherPlus();
         else getWeather(true);
       }
     }
+    configureWeatherRecovery();
   }, function() { console.log('Settings delivery failed'); stopWeatherPlus(); if (chosenWeatherSource(settings) === 'weatherplus') startWeatherPlus(); else getWeather(true); });
 });

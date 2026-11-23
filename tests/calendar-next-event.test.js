@@ -10,7 +10,13 @@ assert.ok(manifest.pebble.usesPermissions.includes('Calendar'),'native Calendar 
 assert.match(source,/category:'calendar',item:'event'/);
 assert.match(source,/messageKey": "CALENDAR_FILTER"/);
 assert.match(source,/Show Next Event \(7s\)/);
-assert.match(c,/s_default_view == 2 \? 126 : 222/);
+assert.match(c,/s_center_view=0/);
+assert.match(c,/MESSAGE_KEY_CENTER_VIEW/);
+const renderer=fs.readFileSync('src/c/corner_render.inc','utf8');
+assert.match(c,/bool show_calendar=s_calendar_takeover_active\|\|/,
+      'Wrist and persistent calendar preview use the original sliding bottom panel');
+assert.match(renderer,/return s_center_view;/,'Wrist flick cannot replace chosen center');
+assert.match(renderer,/if\(mode==2\) \{/);
 assert.match(c,/MESSAGE_KEY_NEXT_EVENT_START/);
 assert.match(c,/update_calendar_countdown\(void\)/);
 const start=source.indexOf('var calendarSubscription = null;');
@@ -23,6 +29,7 @@ let onData;
 let subscriptions=0;
 let storage={};
 const ctx={
+ cornerCatalog:require('../src/pkjs/corner-catalog'),
  console:{log(){}},Date,Math,JSON,Number,isFinite,parseInt,
  localStorage:{getItem:k=>storage[k]||null,setItem:(k,v)=>{storage[k]=v;}},
  readSettings:()=>settings,

@@ -1,5 +1,47 @@
 # KinetiCast — Health and Weather
 
+## Modular complications (experimental feature branch)
+
+**Movable weather gauge fix:** The combined temperature gauge now calls the same
+native 90×85 drawing routine as the original top-right gauge in any of the four
+corners. The temperature numbers, arc, UV dot, stale-data marker, and update
+behavior therefore remain consistent. Full-size 64px condition artwork and
+heart-rate history receive enough space in top corners; the battery percentage
+gauge uses a separate centered value so it cannot overprint its ring.
+
+
+**Moon Image complications:** Under Sun & Moon, choose **Moon image** (larger disk only, no label or percentage) or **Moon image + illumination** (large disk with percentage, no label). The watch draws waxing/right-lit and waning/left-lit shapes locally from its clock and a lunar-cycle estimate, without phone or provider updates. The Moon Phase and Moon Illumination text options remain available.
+
+**Center/forecast corrections:** Center Time Only and Time + Date now restore their layers when selected after the other center modes. The 3-day center uses 32×32 RGBA forecast icons with Pebble's transparency-aware compositing, instead of black-backed 24px images. Wrist slides keep the original 64px artwork; event/weather panels stop 8px lower to leave clock clearance.
+
+**Weather transport:** The active watchface subscribes to Weather+ on the phone.
+Only the fields used by currently selected weather/astronomy complications are
+transmitted, and only when their displayed values change. The phone tracks
+acknowledged values, retries failed sends, and supplies a complete snapshot when
+the watch starts/reconnects or settings change. The watch no longer requests
+weather every few minutes. Non-Weather+ providers are refreshed by the phone at
+the chosen update interval, with Bluetooth differences still suppressed.
+Weather+ retains a stalled-source recovery check; this is a phone-side fallback,
+not continuous watch polling. Rain-arrival countdowns use a timestamp on the
+watch rather than minute-by-minute Bluetooth pushes.
+
+
+This branch offers one configurable layout: four corners plus a selectable center. The defaults reproduce the original watchface: top-left weather icon, top-right combined weather display, bottom-left **original 72×72 health rings and distance label**, bottom-right original heart icon/BPM/graph, and the date and clock at their original pixel positions. Previous preview presets are retired; the test-build UUID is separate from production.
+
+- Each corner offers Category and Reading selectors for Weather, Air Quality & Marine, Health & Fitness, Calendar, Date & Time (including **Time**), Sun & Moon, Battery & System, Plugin Data and Blank. The center can be **Time + Date**, **Time only**, **Next Event**, or **3-Day Weather**.
+- **Original dual health rings + distance** remains a selectable complication, along with ring-only, numerical steps, distance, active minutes, BPM-only and BPM-with-graph variants.
+- The battery strip has Off, Slim, Enhanced, and Bar + Percentage modes; battery % and estimated days are corner options. The discharge estimate appears only after sufficient unplugged history.
+- Weather+ offers rain probability and an approximate hour-level onset, UV, humidity, wind, AQI, warnings and marine metrics as available from the provider. Missing values do not display as zero.
+- Plugin Data discovers read-only scalar plugin fields and Pebble preferred complications 1–5. Home Assistant Bridge has optional HomeRead permission; no control permission is requested.
+- Wrist flicks temporarily preview a three-day forecast or next event **in the center**. The automatic upcoming-event takeover also replaces only the center, leaving corners unchanged.
+- There is no separate weather update toggle or bottom panel section. Weather is subscribed and pushed whenever a selected corner, the center, or a weather wrist preview needs it. The Weather section appears only when relevant.
+- Health/Sleep and Calendar sections are conditional on selected complications and active feature settings. Health history, distance units, live updates and morning sleep options remain available where applicable.
+
+### Feature-branch limitations
+
+Emery / Pebble Time 2 only. Trends currently display numerical summaries rather than full sparklines; alternate timezone is reserved but not implemented; generic plugin discovery cannot override another plugin's permissions. VitalGauge Energy Reserve/Readiness remain watch-local to VitalGauge and are **not available in KinetiCast** until a shared data bridge exists. Source fields can be unavailable depending on provider/location. The settings page needs Save Settings rather than offering live on-watch preview. Physical-device visual and power testing is needed before a release.
+
+
 Pebble Time 2 watchface combining clock, weather and health information.
 
 **Current source version:** 2.6.0 (see `package.json`). **Target:** Emery / Pebble Time 2.

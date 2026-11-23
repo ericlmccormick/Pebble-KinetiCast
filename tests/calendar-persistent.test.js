@@ -12,7 +12,7 @@ assert.equal(manifest.pebble.messageKeys.PERSISTENT_CALENDAR_MINUTES,44);
 
 // Configuration values must be the six supported 5-minute increments.
 const prefix = source.slice(source.indexOf('var clayConfig ='), source.indexOf('var clay ='));
-const config = vm.runInNewContext(prefix + '\nclayConfig', {});
+const config = vm.runInNewContext(prefix + '\nclayConfig', {cornerCatalog:require('../src/pkjs/corner-catalog')});
 const items = config.reduce((a,x)=>a.concat(x.items||[]), []);
 const toggle = items.find(x=>x.messageKey === 'PERSISTENT_CALENDAR_ENABLE');
 const lead = items.find(x=>x.messageKey === 'PERSISTENT_CALENDAR_MINUTES');
@@ -55,7 +55,13 @@ assert.match(native, /uint32_t next_transition = remaining > lead_seconds/);
 assert.match(native, /\(desired_transition - \(uint32_t\)now\) \* 1000/);
 assert.match(native, /next_transition > 0 && next_transition <= 1800/);
 assert.match(native, /update_persistent_calendar\(\);\s*update_calendar_countdown\(\);/);
-assert.match(native, /int target = s_calendar_takeover_active \? 2 :/);
+const renderer=fs.readFileSync('src/c/corner_render.inc','utf8');
+assert.match(native,/bool show_calendar=s_calendar_takeover_active\|\|/,
+  'Persistent event appears in the sliding bottom overlay');
+assert.match(native,/move_panel\(s_calendar_container,show_calendar\?134:228\);/,
+  'Persistent calendar slides up from the bottom and down again');
+assert.match(renderer,/return s_center_view;/,
+  'Event overlay does not replace the chosen center or clock');
 assert.match(native, /&& !s_calendar_takeover_active\)/);
 assert.match(native, /if \(!s_shake_test_panel \|\| s_calendar_takeover_active\) return;/);
 assert.match(native, /persist_write_bool\(PERSIST_KEY_PERSISTENT_CALENDAR, s_persistent_calendar_enabled\)/);

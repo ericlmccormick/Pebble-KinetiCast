@@ -42,6 +42,15 @@
 #define PERSIST_KEY_GESTURE_POWER_MODE 42
 #define PERSIST_KEY_HEALTH_LIVE_UPDATES 43
 #define PERSIST_KEY_WEATHER_UPDATES_ENABLED 44
+#define PERSIST_KEY_CORNER_MODE 45
+#define PERSIST_KEY_BATTERY_STYLE 46
+#define PERSIST_KEY_CORNER_BASE 47
+#define PERSIST_KEY_BATTERY_SAMPLE_PCT 55
+#define PERSIST_KEY_BATTERY_SAMPLE_TIME 56
+#define PERSIST_KEY_BATTERY_RATE 57
+#define PERSIST_KEY_CENTER_VIEW 58
+#define PERSIST_KEY_WX_BASE 100
+#define PERSIST_KEY_WX_ALERT 122
 
 #define HR_HISTORY_SIZE 60 
 
@@ -117,7 +126,20 @@ static char s_icon_code[4] = "01d";
 static time_t s_last_weather_request = 0;
 static time_t s_last_weather_success = 0;
 static bool s_has_weather = false; 
-static int s_hr_history[HR_HISTORY_SIZE]; 
+static int s_hr_history[HR_HISTORY_SIZE];
+static Layer *s_corner_layers[4]={NULL,NULL,NULL,NULL};
+static int s_corner_mode=1,s_battery_style=1;
+static int s_center_view=0; // 0 original time/date, 1 time, 2 next event, 3 3-day forecast
+static Layer *s_center_layer=NULL;
+static int s_corner_metric[4]={1,2,30,38};
+static char s_corner_plugin_title[4][20]={{0}};
+static char s_corner_plugin_value[4][24]={{0}};
+static int s_wx[22];
+static char s_wx_alert[48]="";
+static int s_battery_rate_x100=0;
+static int s_battery_last_sample_pct=0;
+static time_t s_battery_last_sample_time=0;
+static bool s_battery_charging=false; 
 
 // ==============================================================================
 // SECTION: FORWARD DECLARATIONS
@@ -133,7 +155,11 @@ static void update_persistent_calendar(void);
 static void request_calendar_handoff(void);
 static void update_shake_subscription(void); 
 static void generate_forecast_bitmaps();
-static void show_shake_strength(int peak_mg); 
+static void show_shake_strength(int peak_mg);
+static void corner_redraw(void);
+static void corner_apply_visibility(void);
+static void corner_draw_proc(Layer*,GContext*);
+static void center_draw_proc(Layer*,GContext*); 
 
 // ==============================================================================
 // SECTION: UTILITY & HELPER FUNCTIONS
@@ -160,14 +186,22 @@ static bool is_dark_theme() {
   return solar_theme_dark(s_theme_mode);
 }
 
+static bool weather_complications_needed(void) {
+  // A selected weather/astronomy corner, the weather center, or the optional
+  // three-day wrist preview activates phone-pushed weather automatically.
+  if(s_center_view==3||s_shake_action==0)return true;
+  for(int i=0;i<4;i++) {
+    int m=s_corner_metric[i];
+    if((m>=1&&m<=28)||(m>=70&&m<=73))return true;
+  }
+  return false;
+}
 static void request_weather() {
-  if (!s_weather_updates_enabled) return;
+  if(!weather_complications_needed())return;
   time_t now = time(NULL);
   if (!s_connected || (s_last_weather_request && now - s_last_weather_request < 60)) return;
-  int interval = s_update_freq < 10 ? 10 : (s_update_freq > 120 ? 120 : s_update_freq);
-  // Reduce radio use automatically at critically low battery.
-  if (s_battery_level <= 15) interval *= 2;
-  if (s_has_weather && now - s_last_weather_success < interval * 60) return;
+  // Request a one-time snapshot on launch/reconnect only. Weather+ pushes
+  // subsequently from the phone when a displayed value actually changes.
   
   DictionaryIterator *iter; 
   if (app_message_outbox_begin(&iter) == APP_MSG_OK) { 
@@ -232,7 +266,13 @@ static void save_weather_data() {
   persist_write_int(PERSIST_KEY_HR_WINDOW, s_hr_window);
   persist_write_int(PERSIST_KEY_SLEEP_DURATION, s_sleep_duration);
   persist_write_int(PERSIST_KEY_TEMP_UNIT, s_temp_unit);
-  persist_write_bool(PERSIST_KEY_DISTANCE_UNIT, s_use_metric); 
+  persist_write_bool(PERSIST_KEY_DISTANCE_UNIT, s_use_metric);
+  persist_write_int(PERSIST_KEY_CORNER_MODE,1);
+  persist_write_int(PERSIST_KEY_CENTER_VIEW,s_center_view);
+  persist_write_int(PERSIST_KEY_BATTERY_STYLE,s_battery_style);
+  for(int i=0;i<4;i++)persist_write_int(PERSIST_KEY_CORNER_BASE+i,s_corner_metric[i]);
+  for(int i=0;i<22;i++)persist_write_int(PERSIST_KEY_WX_BASE+i,s_wx[i]);
+  persist_write_string(PERSIST_KEY_WX_ALERT,s_wx_alert); 
   
   persist_write_int(PERSIST_KEY_D1_HI, s_d1_hi);
   persist_write_int(PERSIST_KEY_D1_LO, s_d1_lo);
@@ -246,6 +286,30 @@ static void save_weather_data() {
 }
 
 static void load_weather_data() {
+  for(int i=0;i<22;i++)s_wx[i]=persist_exists(PERSIST_KEY_WX_BASE+i)?
+    persist_read_int(PERSIST_KEY_WX_BASE+i):(-32768);
+  if(persist_exists(PERSIST_KEY_WX_ALERT))
+    persist_read_string(PERSIST_KEY_WX_ALERT,s_wx_alert,sizeof(s_wx_alert));
+  // The preview has one layout now; migrate any old preset to custom.
+  s_corner_mode=1;
+  if(persist_exists(PERSIST_KEY_CENTER_VIEW)){
+    int center=persist_read_int(PERSIST_KEY_CENTER_VIEW);
+    s_center_view=center>=0&&center<=3?center:0;
+  }
+  if(persist_exists(PERSIST_KEY_BATTERY_STYLE)){
+    int style=persist_read_int(PERSIST_KEY_BATTERY_STYLE);
+    s_battery_style=style>=0&&style<=3?style:1;
+  }
+  for(int i=0;i<4;i++)if(persist_exists(PERSIST_KEY_CORNER_BASE+i)){
+    int n=persist_read_int(PERSIST_KEY_CORNER_BASE+i);
+    if(n>=0&&n<=95)s_corner_metric[i]=n;
+  }
+  if(persist_exists(PERSIST_KEY_BATTERY_SAMPLE_PCT))
+    s_battery_last_sample_pct=persist_read_int(PERSIST_KEY_BATTERY_SAMPLE_PCT);
+  if(persist_exists(PERSIST_KEY_BATTERY_SAMPLE_TIME))
+    s_battery_last_sample_time=(time_t)persist_read_int(PERSIST_KEY_BATTERY_SAMPLE_TIME);
+  if(persist_exists(PERSIST_KEY_BATTERY_RATE))
+    s_battery_rate_x100=persist_read_int(PERSIST_KEY_BATTERY_RATE);
   if (persist_exists(PERSIST_KEY_CUR)) { 
     s_has_weather = true;
     s_last_weather_success = persist_exists(PERSIST_KEY_WEATHER_TIME) ? persist_read_int(PERSIST_KEY_WEATHER_TIME) : 0;
@@ -264,7 +328,8 @@ static void load_weather_data() {
   }
   if (persist_exists(PERSIST_KEY_DISTANCE_UNIT)) s_use_metric = persist_read_bool(PERSIST_KEY_DISTANCE_UNIT);
   if (persist_exists(PERSIST_KEY_THEME_MODE)) s_theme_mode = persist_read_int(PERSIST_KEY_THEME_MODE);
-  if (persist_exists(PERSIST_KEY_DEFAULT_VIEW)) s_default_view = persist_read_int(PERSIST_KEY_DEFAULT_VIEW);
+  // Retain the legacy field for compatibility, but no longer select bottom panels.
+  s_default_view=0;
   if (persist_exists(PERSIST_KEY_SHAKE_ACTION)) {
     int action = persist_read_int(PERSIST_KEY_SHAKE_ACTION);
     s_shake_action = (action >= 0 && action <= 4) ? action : 0;
@@ -545,15 +610,17 @@ static int active_panel(void) {
   return s_panel_override >= 0 ? s_panel_override : s_default_view;
 }
 static void execute_panel_transition(bool alternate_view) {
-  // Default may be Health (0), Weather (1) or Next Event (2).
-  // The original alternate for Health/Weather is preserved.
-  s_view_is_swapped = alternate_view;
-  // Calendar takeover outranks short shake previews and restores the default at start.
-  int target = s_calendar_takeover_active ? 2 : (s_panel_override >= 0 ? s_panel_override :
-    (alternate_view ? (s_default_view == 0 ? 1 : 0) : s_default_view));
-  move_panel(s_health_container, target == 0 ? 126 : 222);
-  move_panel(s_forecast_container, target == 1 ? 126 : 222);
-  move_panel(s_calendar_container, target == 2 ? 126 : 222);
+  // The seven-second flick is a full-width bottom overlay, not a center change.
+  // Restore both overlays offscreen on dismissal without mutating the four
+  // corners or the centered date/time or top-right weather gauge.
+  s_view_is_swapped=alternate_view;
+  bool show_calendar=s_calendar_takeover_active||
+    (alternate_view&&s_panel_override==2);
+  bool show_weather=alternate_view&&!show_calendar;
+  // Stop 8px lower than the original 126px slide to leave clearance below
+  // the center time; the forecast/calendar child layout stays unchanged.
+  move_panel(s_forecast_container,show_weather?134:228);
+  move_panel(s_calendar_container,show_calendar?134:228);
 }
 // An active event takeover stays until its exact start time, irrespective of
 // the default panel or any temporary shake preview.
@@ -575,7 +642,7 @@ static void calendar_start_callback(void *context) {
 // This is one AppMessage at the event boundary, not an extra plugin sync.
 static void request_calendar_handoff(void) {
   if (!s_connected || s_calendar_status != 1 || !s_calendar_start) return;
-  if (s_default_view != 2 && s_shake_action != 3 &&
+  if (s_center_view != 2 && s_shake_action != 3 &&
       !s_persistent_calendar_enabled) return;
   time_t now = time(NULL);
   if ((int64_t)now - (int64_t)s_calendar_start < 15 * 60) return;
@@ -639,7 +706,7 @@ static void set_calendar_panel_title(const char *title) {
 
 static void update_calendar_countdown(void) {
   if (!s_calendar_countdown_layer) return;
-  if (!s_calendar_takeover_active && s_default_view != 2 &&
+  if (!s_calendar_takeover_active && s_center_view != 2 &&
       s_panel_override != 2) return;
   time_t now = time(NULL);
   if (s_calendar_status != 1 || !s_calendar_start ||
@@ -679,15 +746,15 @@ static void bluetooth_callback(bool connected) {
     request_weather();
   }
   if (!connected && !quiet_time_is_active()) vibes_double_pulse(); 
-  layer_mark_dirty(s_weather_arc_layer); // Keep the last valid icon, even when offline. 
+  layer_mark_dirty(s_weather_arc_layer); // Keep the last valid icon, even when offline.
+  corner_redraw(); // Also update copied temperature/connection gauges in other corners.
 }
 
 // ==============================================================================
 // SECTION: CUSTOM DRAWING PROCEDURES
 // ==============================================================================
 
-static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
-  GRect bounds = layer_get_bounds(layer); 
+static void draw_combined_temperature(GContext *ctx,GRect bounds) {
   graphics_context_set_antialiased(ctx, true); 
   graphics_context_set_text_color(ctx, is_dark_theme() ? GColorWhite : GColorBlack); 
   
@@ -695,12 +762,12 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
   else snprintf(s_lo_buf, sizeof(s_lo_buf), "--"); 
   if (s_has_weather) snprintf(s_hi_buf, sizeof(s_hi_buf), "%d", s_hi);
   else snprintf(s_hi_buf, sizeof(s_hi_buf), "--"); 
-  graphics_draw_text(ctx, s_lo_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(15, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
-  graphics_draw_text(ctx, s_hi_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 50, 35, 35, 22), GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
+  graphics_draw_text(ctx, s_lo_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.origin.x+15,bounds.origin.y+35,35,22), GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
+  graphics_draw_text(ctx, s_hi_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_14_BOLD : FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.origin.x+bounds.size.w-50,bounds.origin.y+35,35,22), GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
   
   if (s_has_weather) snprintf(s_cur_buf, sizeof(s_cur_buf), "%d", s_cur);
   else snprintf(s_cur_buf, sizeof(s_cur_buf), "--"); 
-  graphics_draw_text(ctx, s_cur_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_28_BOLD), GRect(0, 15, bounds.size.w, 35), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL); 
+  graphics_draw_text(ctx, s_cur_buf, fonts_get_system_font(s_temp_unit >= 2 ? FONT_KEY_GOTHIC_24_BOLD : FONT_KEY_GOTHIC_28_BOLD), GRect(bounds.origin.x,bounds.origin.y+15,bounds.size.w,35), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL); 
   
   GRect arc_bounds = grect_inset(bounds, GEdgeInsets(14, 14, 28, 14)); 
   graphics_context_set_stroke_width(ctx, 4); 
@@ -735,9 +802,15 @@ static void weather_arc_update_proc(Layer *layer, GContext *ctx) {
     graphics_fill_circle(ctx, dot, 5);
   }
   time_t now = time(NULL);
-  if (!s_connected || !s_has_weather || (s_last_weather_success > 0 && now - s_last_weather_success > (s_update_freq * 120))) {
-    graphics_draw_text(ctx, "!", fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.size.w - 16, 0, 16, 22), GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
+  if (!s_connected || !s_has_weather || (s_last_weather_success > 0 && now - s_last_weather_success > 12 * 60 * 60)) {
+    graphics_draw_text(ctx, "!", fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD), GRect(bounds.origin.x+bounds.size.w-16,bounds.origin.y,16,22), GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
   }
+}
+
+static void weather_arc_update_proc(Layer *layer,GContext *ctx) {
+  // The built-in top-right gauge and movable corner gauges use precisely
+  // the same low/current/high, UV dot and warning geometry.
+  draw_combined_temperature(ctx,layer_get_bounds(layer));
 }
 
 static void goals_update_proc(Layer *layer, GContext *ctx) {
@@ -793,6 +866,8 @@ static void hr_graph_update_proc(Layer *layer, GContext *ctx) {
   #endif
 }
 
+#include "corner_render.inc"
+
 static void sleep_layer_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer); 
   graphics_context_set_fill_color(ctx, GColorOxfordBlue); 
@@ -815,9 +890,19 @@ static void sleep_layer_update_proc(Layer *layer, GContext *ctx) {
 }
 
 static void battery_update_proc(Layer *layer, GContext *ctx) {
-  GRect b = layer_get_bounds(layer); 
-  graphics_context_set_fill_color(ctx, s_battery_level > 20 ? GColorKellyGreen : GColorRed);
-  graphics_fill_rect(ctx, GRect(0, 0, (s_battery_level * b.size.w) / 100, b.size.h), 0, GCornerNone);
+  GRect b=layer_get_bounds(layer);
+  if(s_battery_style==0)return;
+  graphics_context_set_fill_color(ctx,s_battery_level<=15?GColorRed:
+    s_battery_level<=30?GColorChromeYellow:GColorKellyGreen);
+  if(s_battery_style==3){
+    graphics_fill_rect(ctx,GRect(0,b.size.h-5,(s_battery_level*b.size.w)/100,5),0,GCornerNone);
+    graphics_context_set_text_color(ctx,is_dark_theme()?GColorWhite:GColorBlack);
+    char buf[12];snprintf(buf,sizeof(buf),"%d%%",s_battery_level);
+    graphics_draw_text(ctx,buf,fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD),
+      GRect(0,0,b.size.w,17),GTextOverflowModeTrailingEllipsis,GTextAlignmentCenter,NULL);
+  }else {
+    graphics_fill_rect(ctx,GRect(0,0,(s_battery_level*b.size.w)/100,b.size.h),0,GCornerNone);
+  }
 }
 
 // ==============================================================================
@@ -859,8 +944,9 @@ static void update_theme_colors() {
   bitmap_layer_set_compositing_mode(s_f_icon2_layer, GCompOpSet); 
   bitmap_layer_set_compositing_mode(s_f_icon3_layer, GCompOpSet); 
   
-  layer_mark_dirty(s_weather_arc_layer); 
-  layer_mark_dirty(s_goals_canvas); 
+  layer_mark_dirty(s_weather_arc_layer);
+  layer_mark_dirty(s_goals_canvas);
+  corner_redraw(); // Theme changes must repaint movable weather/health graphics.
 }
 
 static uint32_t get_resource_by_code(char *code) {
@@ -890,6 +976,8 @@ static void generate_forecast_bitmaps() {
   bitmap_layer_set_bitmap(s_f_icon1_layer, s_f_bmp1);
   bitmap_layer_set_bitmap(s_f_icon2_layer, s_f_bmp2);
   bitmap_layer_set_bitmap(s_f_icon3_layer, s_f_bmp3);
+  if(s_forecast_container)layer_mark_dirty(s_forecast_container);
+  if(s_center_layer)layer_mark_dirty(s_center_layer);
 }
 
 static void set_weather_icon(char *icon_code) {
@@ -973,7 +1061,8 @@ static void update_time(struct tm *tick_time, TimeUnits units_changed) {
   update_persistent_calendar();
   request_calendar_handoff();
   update_calendar_countdown();
-  request_weather(); // Throttled according to UPDATE_FREQ and the last valid update.
+  // Weather is pushed by the phone; no weather request in the minute tick.
+  if(s_corner_mode)corner_redraw();
   // No periodic redraw: weather/theme updates invalidate the weather arc. 
 
   #if defined(PBL_HEALTH)
@@ -1032,6 +1121,7 @@ static void update_health() {
     layer_mark_dirty(s_goals_canvas);
   }
   #endif
+  if(s_corner_mode)corner_redraw();
 }
 static void health_handler(HealthEventType event, void *context) {
   (void)context;
@@ -1043,10 +1133,33 @@ static void health_handler(HealthEventType event, void *context) {
 }
 
 static void battery_callback(BatteryChargeState state) {
-  if (s_battery_level == state.charge_percent) return;
-  s_battery_level = state.charge_percent;
-  if (s_battery_layer) layer_mark_dirty(s_battery_layer);
-
+  int pct=state.charge_percent;
+  time_t now=time(NULL);
+  bool plugged=state.is_plugged||state.is_charging;
+  bool changed=s_battery_level!=pct||s_battery_charging!=plugged;
+  if(plugged||s_battery_last_sample_time<=0||pct>s_battery_last_sample_pct) {
+    s_battery_last_sample_pct=pct;
+    s_battery_last_sample_time=now;
+  } else if(pct<=s_battery_last_sample_pct-2 &&
+            now>s_battery_last_sample_time+3600) {
+    int elapsed=(int)(now-s_battery_last_sample_time);
+    int rate=(int)(((int64_t)(s_battery_last_sample_pct-pct)*8640000)/elapsed);
+    if(rate>=50&&rate<=5000) {
+      s_battery_rate_x100=s_battery_rate_x100>0?
+        (3*s_battery_rate_x100+rate)/4:rate;
+      persist_write_int(PERSIST_KEY_BATTERY_RATE,s_battery_rate_x100);
+    }
+    s_battery_last_sample_pct=pct;
+    s_battery_last_sample_time=now;
+  }
+  if(changed){
+    persist_write_int(PERSIST_KEY_BATTERY_SAMPLE_PCT,s_battery_last_sample_pct);
+    persist_write_int(PERSIST_KEY_BATTERY_SAMPLE_TIME,(int)s_battery_last_sample_time);
+  }
+  s_battery_level=pct;
+  s_battery_charging=plugged;
+  if(changed&&s_battery_layer)layer_mark_dirty(s_battery_layer);
+  if(changed&&s_corner_mode)corner_redraw();
 }
 
 // ==============================================================================
@@ -1083,14 +1196,16 @@ static void main_window_load(Window *window) {
   load_weather_data();
 
   // CHANGED: Base container Y starting point moved up to 126. Height expanded to 96px.
-  int initial_health_y = (s_default_view == 0) ? 126 : 222;
-  int initial_forecast_y = (s_default_view == 1) ? 126 : 222;
+  int initial_health_y=126;
+  int initial_forecast_y=228;
 
   s_health_container = layer_create(GRect(0, initial_health_y, 200, 96));
   s_forecast_container = layer_create(GRect(0, initial_forecast_y, 200, 96));
+  layer_set_update_proc(s_forecast_container,forecast_slide_draw_proc);
   layer_add_child(w_layer, s_health_container);
   layer_add_child(w_layer, s_forecast_container);
-  s_calendar_container = layer_create(GRect(0, s_default_view == 2 ? 126 : 222, 200, 96));
+  s_calendar_container=layer_create(GRect(0,228,200,96));
+  layer_set_update_proc(s_calendar_container,calendar_slide_draw_proc);
   layer_add_child(w_layer, s_calendar_container);
   s_calendar_label_layer = text_layer_create(GRect(10, 0, 180, 22));
   s_calendar_title_layer = text_layer_create(GRect(8, 20, 184, 49));
@@ -1156,7 +1271,12 @@ static void main_window_load(Window *window) {
   
   layer_add_child(s_forecast_container, bitmap_layer_get_layer(s_f_icon1_layer)); 
   layer_add_child(s_forecast_container, bitmap_layer_get_layer(s_f_icon2_layer)); 
-  layer_add_child(s_forecast_container, bitmap_layer_get_layer(s_f_icon3_layer)); 
+  layer_add_child(s_forecast_container, bitmap_layer_get_layer(s_f_icon3_layer));
+  // The wrist-flick panel is the ORIGINAL 96px-high forecast panel:
+  // 64px artwork, exact original offsets and day/temperature text.
+  layer_set_hidden(bitmap_layer_get_layer(s_f_icon1_layer),false);
+  layer_set_hidden(bitmap_layer_get_layer(s_f_icon2_layer),false);
+  layer_set_hidden(bitmap_layer_get_layer(s_f_icon3_layer),false); 
 
   text_layer_set_font(s_f_day1_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD)); 
   text_layer_set_font(s_f_day2_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD)); 
@@ -1211,7 +1331,41 @@ static void main_window_load(Window *window) {
 
   s_battery_layer = layer_create(GRect(0, 222, 200, 6)); 
   layer_set_update_proc(s_battery_layer, battery_update_proc); 
-  layer_add_child(w_layer, s_battery_layer); 
+  layer_add_child(w_layer, s_battery_layer);
+  const GRect corner_frames[4]={GRect(0,0,100,74),GRect(100,0,100,74),
+    GRect(0,150,100,72),GRect(100,150,100,72)};
+  for(int i=0;i<4;i++){
+    s_corner_layers[i]=layer_create(corner_frames[i]);
+    layer_set_update_proc(s_corner_layers[i],corner_draw_proc);
+    layer_add_child(w_layer,s_corner_layers[i]);
+  }
+  s_center_layer=layer_create(GRect(0,65,200,72));
+  layer_set_update_proc(s_center_layer,center_draw_proc);
+  layer_add_child(w_layer,s_center_layer);
+  compact_icons_init();
+
+  // Overlay panels must be ABOVE the bottom corners/rings, while the date,
+  // clock, and chosen center remain ABOVE any 11px top-edge overlap.
+  // Forecast/calendar panels never occupy the top-right weather region.
+  layer_remove_from_parent(s_forecast_container);
+  layer_add_child(w_layer,s_forecast_container);
+  layer_remove_from_parent(s_calendar_container);
+  layer_add_child(w_layer,s_calendar_container);
+  layer_remove_from_parent(text_layer_get_layer(s_date_layer));
+  layer_add_child(w_layer,text_layer_get_layer(s_date_layer));
+  layer_remove_from_parent(text_layer_get_layer(s_time_layer));
+  layer_add_child(w_layer,text_layer_get_layer(s_time_layer));
+  layer_remove_from_parent(s_center_layer);
+  layer_add_child(w_layer,s_center_layer);
+
+  // The bar is drawn last, above corner content, and each corner is constrained
+  // to the space above it by corner_apply_visibility().
+  layer_remove_from_parent(s_battery_layer);
+  layer_add_child(w_layer,s_battery_layer);
+  if(s_battery_style==2)layer_set_frame(s_battery_layer,GRect(0,218,200,10));
+  else if(s_battery_style==3)layer_set_frame(s_battery_layer,GRect(0,211,200,17));
+  corner_apply_visibility();
+  corner_sync_seconds(); 
   
   s_shake_test_panel = layer_create(GRect(0, 126, 200, 96));
   layer_set_update_proc(s_shake_test_panel, shake_test_background_proc);
@@ -1283,7 +1437,11 @@ static void main_window_unload(Window *window) {
   bitmap_layer_destroy(s_f_icon2_layer); 
   bitmap_layer_destroy(s_f_icon3_layer); 
   
-  layer_destroy(s_health_container); 
+  if(s_corner_seconds_timer){app_timer_cancel(s_corner_seconds_timer);s_corner_seconds_timer=NULL;}
+  if(s_center_layer){layer_destroy(s_center_layer);s_center_layer=NULL;}
+  compact_icons_deinit();
+  layer_destroy(s_health_container);
+  for(int i=0;i<4;i++){if(s_corner_layers[i]){layer_destroy(s_corner_layers[i]);s_corner_layers[i]=NULL;}} 
   layer_destroy(s_forecast_container);
   text_layer_destroy(s_calendar_label_layer);
   text_layer_destroy(s_calendar_title_layer);
@@ -1307,18 +1465,26 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
 
   while(t) { 
     if(t->key == MESSAGE_KEY_TEMP_CURRENT) { s_cur = get_int(t); s_has_weather = true; s_last_weather_success = time(NULL); weather_changed = true; }
-    else if(t->key == MESSAGE_KEY_TEMP_HIGH) s_hi = get_int(t);
-    else if(t->key == MESSAGE_KEY_TEMP_LOW) s_lo = get_int(t);
-    else if(t->key == MESSAGE_KEY_CONDITIONS && t->type == TUPLE_CSTRING) { if(strcmp(s_icon_code, t->value->cstring)) set_weather_icon(t->value->cstring); }
+    else if(t->key == MESSAGE_KEY_TEMP_HIGH) { s_hi=get_int(t);weather_changed=true; }
+    else if(t->key == MESSAGE_KEY_TEMP_LOW) { s_lo=get_int(t);weather_changed=true; }
+    else if(t->key == MESSAGE_KEY_CONDITIONS && t->type == TUPLE_CSTRING) {
+      if(strcmp(s_icon_code,t->value->cstring)){
+        set_weather_icon(t->value->cstring);
+        weather_changed=true;
+      }
+    }
     else if(t->key == MESSAGE_KEY_UPDATE_FREQ) s_update_freq = get_int(t);
     else if(t->key == MESSAGE_KEY_UNITS || t->key == MESSAGE_KEY_DISTANCE_UNIT) { s_use_metric = (get_int(t) == 1); update_health(); }
     else if(t->key == MESSAGE_KEY_TEMP_UNIT) {
       int unit = get_int(t);
       s_temp_unit = (unit >= 0 && unit <= 3) ? unit : 0;
+      weather_changed=true;
     }
-    else if(t->key == MESSAGE_KEY_UV_INDEX) s_uv = get_int(t);
+    else if(t->key == MESSAGE_KEY_UV_INDEX) {s_uv=get_int(t);weather_changed=true;}
     else if(t->key == MESSAGE_KEY_IS_NIGHT) {
-      if (s_is_night != (get_int(t) == 1)) { s_is_night = (get_int(t) == 1); theme_changed = true; }
+      if (s_is_night != (get_int(t) == 1)) {
+        s_is_night=(get_int(t)==1);theme_changed=true;weather_changed=true;
+      }
     }
     else if(t->key == MESSAGE_KEY_SHOW_SLEEP) s_show_sleep = (get_int(t) == 1); 
     else if(t->key == MESSAGE_KEY_THEME_MODE) {
@@ -1396,14 +1562,109 @@ static void inbox_received_callback(DictionaryIterator *iter, void *ctx) {
     else if(t->key == MESSAGE_KEY_DAY3_LOW) s_d3_lo = get_int(t);
     else if(t->key == MESSAGE_KEY_DAY3_ICON && t->type == TUPLE_CSTRING) { if(strcmp(s_d3_ic, t->value->cstring)) { snprintf(s_d3_ic, sizeof(s_d3_ic), "%s", t->value->cstring); forecast_icons_changed = true; }}
 
+    else if(t->key == MESSAGE_KEY_CORNER_MODE){
+      s_corner_mode=1; layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CENTER_VIEW){
+      int mode=get_int(t);
+      if(mode>=0&&mode<=3&&s_center_view!=mode) {
+        s_center_view=mode;layout_changed=true;
+      }
+    }
+    else if(t->key == MESSAGE_KEY_BATTERY_BAR_STYLE){
+      int style=get_int(t);
+      if(style>=0&&style<=3){
+        s_battery_style=style;
+        if(s_battery_layer)layer_set_frame(s_battery_layer,
+          style==2?GRect(0,218,200,10):style==3?GRect(0,211,200,17):
+          GRect(0,222,200,6));
+        if(s_battery_layer)layer_mark_dirty(s_battery_layer);
+        layout_changed=true;
+      }
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_TL){int n=get_int(t);if(n>=0&&n<=95)s_corner_metric[0]=n;layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_CORNER_TL_LABEL && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_title[0],sizeof(s_corner_plugin_title[0]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_TL_VALUE && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_value[0],sizeof(s_corner_plugin_value[0]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_TR){int n=get_int(t);if(n>=0&&n<=95)s_corner_metric[1]=n;layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_CORNER_TR_LABEL && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_title[1],sizeof(s_corner_plugin_title[1]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_TR_VALUE && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_value[1],sizeof(s_corner_plugin_value[1]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_BL){int n=get_int(t);if(n>=0&&n<=95)s_corner_metric[2]=n;layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_CORNER_BL_LABEL && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_title[2],sizeof(s_corner_plugin_title[2]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_BL_VALUE && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_value[2],sizeof(s_corner_plugin_value[2]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_BR){int n=get_int(t);if(n>=0&&n<=95)s_corner_metric[3]=n;layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_CORNER_BR_LABEL && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_title[3],sizeof(s_corner_plugin_title[3]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_CORNER_BR_VALUE && t->type==TUPLE_CSTRING){
+      snprintf(s_corner_plugin_value[3],sizeof(s_corner_plugin_value[3]),"%s",t->value->cstring);
+      layout_changed=true;
+    }
+    else if(t->key == MESSAGE_KEY_WX_FEELS){s_wx[0]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_HUMIDITY){s_wx[1]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_WIND_SPEED){s_wx[2]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_WIND_GUST){s_wx[3]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_DEW_POINT){s_wx[4]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_PRESSURE){s_wx[5]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_CLOUD){s_wx[6]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_VISIBILITY){s_wx[7]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_RAIN_CHANCE){s_wx[8]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_RAIN_ETA){s_wx[9]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_AQI){s_wx[10]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_PM25){s_wx[11]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_PM10){s_wx[12]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_OZONE){s_wx[13]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_WAVE_HEIGHT){s_wx[14]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_WAVE_PERIOD){s_wx[15]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_SWELL_HEIGHT){s_wx[16]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_SEA_TEMP){s_wx[17]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_SUNRISE){s_wx[18]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_SUNSET){s_wx[19]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_RAIN_TREND){s_wx[20]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_TEMP_TREND){s_wx[21]=get_int(t);layout_changed=true;}
+    else if(t->key == MESSAGE_KEY_WX_ALERT && t->type==TUPLE_CSTRING){
+      snprintf(s_wx_alert,sizeof(s_wx_alert),"%s",t->value->cstring);layout_changed=true;
+    }
+
     t = dict_read_next(iter); 
   }
   save_weather_data(); 
   if (forecast_icons_changed) generate_forecast_bitmaps();
-  if (weather_changed) layer_mark_dirty(s_weather_arc_layer);
+  if (weather_changed) {
+    layer_mark_dirty(s_weather_arc_layer);
+    corner_redraw(); // Refresh every displayed copy, including high/low-only pushes.
+  }
   
   if (theme_changed) update_theme_colors(); 
-  if (layout_changed) { s_panel_override = -1; execute_panel_transition(false); }
+  if (layout_changed) {
+    s_panel_override=-1;
+    execute_panel_transition(false);
+    // A wrist-flick slide must not alter layout, but an explicit settings
+    // change MUST reapply layer visibility. Otherwise a previously hidden
+    // clock/date stays hidden after switching back from Next Event/3-Day.
+    corner_apply_visibility();
+    if(s_weather_arc_layer)layer_mark_dirty(s_weather_arc_layer);
+    corner_sync_seconds();
+    corner_redraw();
+  }
   update_persistent_calendar();
   update_calendar_countdown(); 
   

@@ -13,14 +13,22 @@ assert.ok(js.includes("if (!calendarFeaturesEnabled())"));
 assert.ok(js.includes("stopCalendarSource(); // do not retain an always-active calendar subscription"));
 assert.ok(js.includes("if (sig === calendarLastSent) return"));
 assert.ok(js.includes("if (signature === weatherPlusLastPayload)"));
-assert.ok(js.includes("if (!weatherUpdatesEnabled()) return"));
+assert.ok(js.includes("if (!weatherUpdatesEnabled(settings)"));
 assert.ok(js.includes("activityCounters.calendarReads++"));
 assert.ok(js.includes("activityCounters.calendarMessages++"));
 assert.ok(js.includes("activityCounters.weatherMessages++"));
-assert.ok(js.includes("messageKey\": \"WEATHER_UPDATES_ENABLED\""));
+assert.ok(!js.includes('"messageKey": "WEATHER_UPDATES_ENABLED"'),
+      'Weather has no contradictory manual off toggle');
+assert.ok(js.includes('weatherPush.requiresWeather(settings || readSettings(),cornerCatalog)'));
 assert.ok(js.includes("messageKey\": \"GESTURE_POWER_MODE\""));
 assert.ok(js.includes("messageKey\": \"HEALTH_LIVE_UPDATES\""));
-assert.ok(c.includes("if (!s_weather_updates_enabled) return"));
+assert.ok(c.includes('if(!weather_complications_needed())return'),
+  'Watch weather startup follows configured complications, not a manual toggle');
+assert.ok(!/request_weather\(\);\s*\/\/ Throttled according to UPDATE_FREQ/.test(c),
+  'Minute handler must not poll weather');
+assert.ok(c.includes('Weather is pushed by the phone'));
+assert.ok(js.includes('forceWeatherSnapshot()'));
+assert.ok(js.includes('configureWeatherRecovery()'));
 assert.ok(c.includes("if (s_gesture_power_mode == 1)"));
 assert.ok(c.includes("accel_tap_service_subscribe(tap_armed_gesture_handler)"));
 assert.ok(c.includes("accel_service_set_sampling_rate(ACCEL_SAMPLING_25HZ)"));

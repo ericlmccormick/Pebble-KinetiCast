@@ -30,6 +30,8 @@ jobs:
           node tests/weather-units.test.js
           node tests/weather-providers.test.js
           node tests/weather-release.test.js
+          node tests/full-day-low.test.js
+          node tests/daily-extrema-hold.test.js
           node tests/weather-plus.test.js
           node tests/shake-tts.test.js
           node tests/calendar-next-event.test.js
@@ -37,6 +39,17 @@ jobs:
           node tests/calendar-handoff.test.js
           node tests/power-efficiency.test.js
           node tests/settings-layout.test.js
+          node --check src/pkjs/corner-catalog.js
+          node --check src/pkjs/corner-plugins.js
+          node --check src/pkjs/corner-weather.js
+          node tests/corners.test.js
+          node tests/corner-gauge-layout.test.js
+          node tests/wrist-slide.test.js
+          node tests/moon-image.test.js
+          node tests/center-forecast.test.js
+          node --check src/pkjs/weather-push.js
+          node --check src/pkjs/weather-delivery.js
+          node tests/weather-push.test.js
           node tests/settings-delivery.test.js
           node --check src/pkjs/universal_tts.js
           node -e "const p=require('./package.json');if(p.pebble.sdkVersion!=='3'||!p.pebble.targetPlatforms.includes('emery'))process.exit(1)"
