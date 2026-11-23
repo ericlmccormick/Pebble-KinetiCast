@@ -99,12 +99,21 @@ assert.equal(requests.length,1);
 requests.shift().respond(200,stationList);
 assert.equal(requests.length,1);
 requests.shift().respond(200,latest);
+assert.equal(sent.length,0,'Do not send truncated NWS hourly low while awaiting full-day data');
+assert.equal(requests.length,1,'Request full local calendar-day extrema independently');
+const extrema=requests.shift();
+assert.match(extrema.url,/daily=temperature_2m_max,temperature_2m_min/);
+extrema.respond(200,{timezone:'America/New_York',daily:{
+ time:dates,
+ temperature_2m_max:[27,23,21,19],
+ temperature_2m_min:[10,7,6,5]
+}});
 assert.equal(sent.length,1);
-assert.equal(sent[0].TEMP_CURRENT,70); // 21 Celsius observed, not first forecast period
-assert.equal(sent[0].TEMP_HIGH,49);
-assert.equal(sent[0].TEMP_LOW,40);
-assert.equal(sent[0].DAY1_HIGH,59);
-assert.equal(sent[0].DAY1_LOW,50);
+assert.equal(sent[0].TEMP_CURRENT,70); // Observed current temperature remains from NWS
+assert.equal(sent[0].TEMP_HIGH,81); // 27 C, native daily high (not hourly remainder)
+assert.equal(sent[0].TEMP_LOW,50);  // 10 C, includes overnight hours
+assert.equal(sent[0].DAY1_HIGH,73);
+assert.equal(sent[0].DAY1_LOW,45);
 
 // An earlier provider's callback must not overwrite a later successful source.
 context.weatherInFlight = true;
@@ -124,4 +133,4 @@ oldNws.respond(200,point);
 assert.equal(requests.length,0);
 assert.equal(sent.length,before);
 metno.respond(503,{error:true});
-console.log('NWS observed temperature, local-date grouping, missing values, and stale response tests passed');
+console.log('NWS observed temperature, complete calendar-day low, local dates, and stale response tests passed');
