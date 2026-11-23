@@ -677,6 +677,43 @@ function completeDayArray(map, today) {
   return result;
 }
 
+// NWS/MET Norway forecastHourly starts at the current time; its minimum
+// excludes earlier hours and rises through the day. Use an explicit forecast
+// of the complete local 00:00-24:00 calendar day for daily high/low values.
+function sendWeatherWithFullDayExtrema(dict,lat,lon){
+  var url='https://api.open-meteo.com/v1/forecast?latitude='+lat+
+    '&longitude='+lon+
+    '&daily=temperature_2m_max,temperature_2m_min'+
+    '&forecast_days=4&timezone=auto&temperature_unit=celsius';
+  var xhr=weatherXHR();
+  xhr.onload=function(){
+    var json=JSON.parse(this.responseText);
+    var daily=json&&json.daily;
+    if(!daily||!daily.time||!daily.temperature_2m_max||
+       !daily.temperature_2m_min||daily.time.length<4){
+      weatherFinished(false,'full local-day extrema unavailable');return;
+    }
+    var today=locationDateParts(Date.now(),json.timezone).day;
+    var expected=new Date(today+'T12:00:00Z');
+    var keys=['TEMP','DAY1','DAY2','DAY3'];
+    for(var i=0;i<4;i++){
+      var key=expected.toISOString().slice(0,10);
+      var hi=daily.temperature_2m_max[i],lo=daily.temperature_2m_min[i];
+      if(daily.time[i]!==key||typeof hi!=='number'||typeof lo!=='number'||
+          !isFinite(hi)||!isFinite(lo)||hi<lo||hi>75||lo< -120){
+        weatherFinished(false,'full local-day extrema missing or misaligned');return;
+      }
+      dict[keys[i]+'_HIGH']=hi;
+      dict[keys[i]+'_LOW']=lo;
+      expected.setUTCDate(expected.getUTCDate()+1);
+    }
+    sendWeatherData(dict);
+  };
+  xhr.open('GET',url);
+  guardWeatherLoad(xhr);
+  xhr.send();
+}
+
 function fetchMetNo(lat, lon, units, settings) {
   var isMetric = 1; // Celsius for shared conversion.
   var url = 'https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=' + lat.toFixed(4) + '&lon=' + lon.toFixed(4);
@@ -748,7 +785,7 @@ function fetchMetNo(lat, lon, units, settings) {
         'DAY3_ICON': days[3].icon
       };
       
-      sendWeatherData(dict);
+      sendWeatherWithFullDayExtrema(dict,lat,lon);
     }
   };
   guardWeatherLoad(xhr);
@@ -841,7 +878,7 @@ function fetchNWS(lat, lon, units, settings) {
             'DAY2_HIGH': days[2].max, 'DAY2_LOW': days[2].min, 'DAY2_ICON': days[2].icon,
             'DAY3_HIGH': days[3].max, 'DAY3_LOW': days[3].min, 'DAY3_ICON': days[3].icon
           };
-          sendWeatherData(dict);
+          sendWeatherWithFullDayExtrema(dict,lat,lon);
         });
       });
     });
